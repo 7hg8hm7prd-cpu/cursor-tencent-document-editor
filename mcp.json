@@ -5,7 +5,8 @@
       "args": ["${CURSOR_PLUGIN_ROOT}/scripts/run-mcp.sh"],
       "env": {
         "EDITOR_SDK_PORT": "39099",
-        "DOCUMENT_EDITOR_PLUGIN_ROOT": "${CURSOR_PLUGIN_ROOT}"
+        "DOCUMENT_EDITOR_PLUGIN_ROOT": "${CURSOR_PLUGIN_ROOT}",
+        "HERMES_WEBUI_BASE": "http://127.0.0.1:8787"
       }
     }
   }

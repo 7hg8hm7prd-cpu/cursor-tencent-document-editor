@@ -6,17 +6,17 @@
 |------|------|------|
 | Markdown (`.md`) | 默认可视化 present | WYSIWYG + MCP `document_edit` |
 | HTML (`.html`) | 默认可视化 present | WYSIWYG + MCP `document_edit` |
-| Word (`.docx`) | editor_sdk | 整篇重写 |
-| PowerPoint (`.pptx`) | editor_sdk | 按章节写幻灯片 |
-| Excel (`.xlsx`) | editor_sdk | CSV/TSV 写入 |
+| Word (`.docx`) | editor_sdk | `document_edit` 整篇重写；`document_patch` 就地替换 |
+| PowerPoint (`.pptx`) | editor_sdk | 整篇 / `document_patch` 页内替换 |
+| Excel (`.xlsx`) | editor_sdk | CSV 写入 / `document_patch` |
 | PDF (`.pdf`) | 文本抽取 | 否 |
 
 MD/HTML 对齐 WorkBuddy `present_files`：
 
-- **IDE**：双击默认打开可视化预览（扩展 `tencentDocument.present`）。`Cmd/Ctrl+S` 写回磁盘。「编辑源码」切回文本编辑器。
-- **Agent**：MCP 工具 `document_present`（默认端口 `39110`）。
+- **IDE**：双击默认打开可视化预览（扩展 `tencentDocument.present`）。`Cmd/Ctrl+S` 写回磁盘。「编辑源码」切回文本编辑器。工具条含 **AI / 框选**（转发本机 Hermes）。
+- **Agent**：MCP 工具 `document_present`（默认端口 `39110`）；AI 用 `document_ai_rewrite`。
 
-本仓库**不依赖** tax-hermes WebUI。Office 能力需要本机 `editor_sdk` 二进制（不随仓库分发）。
+Office 需要本机 `editor_sdk`。AI 改写需要本机 Hermes WebUI（`HERMES_WEBUI_BASE`，默认 `http://127.0.0.1:8787`）。
 
 ## 目录
 
@@ -76,6 +76,8 @@ python3 -m unittest discover -s tests -v
 
 - [docs/2026-10-07-document-present-default-editor.md](docs/2026-10-07-document-present-default-editor.md)
 - [docs/2026-10-07-document-present-toolbar-parity.md](docs/2026-10-07-document-present-toolbar-parity.md)
+- [docs/2026-10-07-present-ai-hermes-bridge.md](docs/2026-10-07-present-ai-hermes-bridge.md)
+- [docs/2026-10-07-office-inplace-patch.md](docs/2026-10-07-office-inplace-patch.md)
 
 ## License
 

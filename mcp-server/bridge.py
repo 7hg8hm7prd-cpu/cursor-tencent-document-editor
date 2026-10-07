@@ -46,6 +46,9 @@ OFFICE_FILE_TYPE = {
     "xlsx": "sheet",
 }
 
+# Short-lived path → file_id cache (process local; preview / patch reuse).
+_FILE_ID_CACHE: dict[str, str] = {}
+
 
 def _abs(path: str | Path) -> Path:
     p = Path(path).expanduser()
@@ -91,6 +94,15 @@ def _require_sdk() -> dict | None:
     return None
 
 
+def _cache_file_id(path: Path, file_id: str) -> None:
+    if file_id:
+        _FILE_ID_CACHE[str(path)] = str(file_id)
+
+
+def _cached_file_id(path: Path) -> str | None:
+    return _FILE_ID_CACHE.get(str(path))
+
+
 def _open_office(path: Path, fmt: str) -> dict:
     err = _require_sdk()
     if err:
@@ -107,8 +119,17 @@ def _open_office(path: Path, fmt: str) -> dict:
         timeout=300,
     )
     if isinstance(result, dict) and result.get("file_id"):
+        _cache_file_id(path, str(result["file_id"]))
         return result
     raise SdkError(f"open_file did not return file_id: {result!r}")
+
+
+def _ensure_office_file_id(path: Path, fmt: str) -> str:
+    """Open existing Office file; prefer fresh open_file, keep cache."""
+    if not path.is_file():
+        raise SdkError(f"file not found: {path}")
+    opened = _open_office(path, fmt)
+    return str(opened["file_id"])
 
 
 def _ready_created(created: dict, file_type: str) -> dict:
@@ -575,24 +596,198 @@ def _edit_pptx(path: Path, content: str) -> dict:
     }
 
 
-def document_edit(file_path: str, content: str, format: str | None = None, content_format: str | None = None) -> dict:
+def document_edit(
+    file_path: str,
+    content: str,
+    format: str | None = None,
+    content_format: str | None = None,
+    mode: str | None = None,
+) -> dict:
+    """Write document content.
+
+    mode:
+      - rewrite (default): md/html overwrite; Office create_* then save (current behavior)
+      - in_place: Office-only hint — prefer document_patch for find/replace;
+        full-body in-place overwrite is not reliable on SDK, so we document the limit
+        and fall back to rewrite unless content is empty.
+    """
     path = _abs(file_path)
     fmt = detect_format(path, format)
+    edit_mode = (mode or "rewrite").lower()
     if fmt == "pdf":
         return {"ok": False, "error": "PDF is view-only; editing not supported", "format": "pdf"}
+    if edit_mode == "in_place" and fmt in ("docx", "xlsx", "pptx"):
+        return {
+            "ok": False,
+            "error": (
+                "document_edit(mode=in_place) does not support full-body overwrite. "
+                "Use document_patch for find/replace / set_csv, or mode=rewrite to rebuild."
+            ),
+            "format": fmt,
+            "file_path": str(path),
+            "hint": "document_patch",
+        }
     try:
         if fmt in ("md", "html"):
             return _edit_md_html(path, content, fmt)
         if fmt == "docx":
-            return _edit_docx(path, content, content_format or "md")
-        if fmt == "xlsx":
-            return _edit_xlsx(path, content)
-        if fmt == "pptx":
-            return _edit_pptx(path, content)
-        return {"ok": False, "error": f"unsupported format: {fmt}"}
+            out = _edit_docx(path, content, content_format or "md")
+        elif fmt == "xlsx":
+            out = _edit_xlsx(path, content)
+        elif fmt == "pptx":
+            out = _edit_pptx(path, content)
+        else:
+            return {"ok": False, "error": f"unsupported format: {fmt}"}
+        if isinstance(out, dict) and out.get("file_id"):
+            _cache_file_id(path, str(out["file_id"]))
+        if isinstance(out, dict):
+            out.setdefault("mode", "rewrite")
+        return out
     except SdkError as e:
         return {"ok": False, "error": str(e), "format": fmt, "file_path": str(path)}
     except OSError as e:
+        return {"ok": False, "error": str(e), "format": fmt, "file_path": str(path)}
+
+
+def _sheet_id_default(file_id: str, explicit: str | None = None) -> str:
+    if explicit:
+        return str(explicit)
+    info = tool_call("sheet_get_sheet_info", {"file_id": file_id}, timeout=60)
+    sheet_id = "000001"
+    if isinstance(info, dict):
+        sheets = info.get("sheets") or info.get("sheet_list") or []
+        if isinstance(sheets, list) and sheets and isinstance(sheets[0], dict):
+            sheet_id = str(sheets[0].get("sheet_id") or sheets[0].get("id") or sheet_id)
+    return sheet_id
+
+
+def _apply_patch_op(fmt: str, file_id: str, op: dict) -> dict:
+    name = str(op.get("op") or "").lower()
+    if fmt == "docx":
+        if name in ("find_replace", "replace"):
+            find = str(op.get("find") or op.get("old") or "")
+            replace = str(op.get("replace") or op.get("new") or "")
+            if not find:
+                raise SdkError("find_replace requires find")
+            args = {
+                "file_id": file_id,
+                "find_text": find,
+                "replace_text": replace,
+            }
+            if op.get("replace_all") is not None:
+                args["replace_all"] = bool(op.get("replace_all"))
+            try:
+                result = tool_call("doc_find_and_replace", args, timeout=120)
+            except SdkError:
+                result = tool_call(
+                    "doc_replace_text",
+                    {
+                        "file_id": file_id,
+                        "old_text": find,
+                        "new_text": replace,
+                    },
+                    timeout=120,
+                )
+            return {"op": name, "ok": True, "result": result}
+        raise SdkError(f"unsupported docx op: {name}")
+
+    if fmt == "xlsx":
+        sheet_id = _sheet_id_default(file_id, op.get("sheet_id"))
+        if name in ("set_csv", "set_range"):
+            csv_data = str(op.get("csv_data") or op.get("csv") or "")
+            if not csv_data:
+                raise SdkError("set_csv requires csv_data")
+            result = tool_call(
+                "sheet_set_range_value_by_csv",
+                {
+                    "file_id": file_id,
+                    "sheet_id": sheet_id,
+                    "start_row": int(op.get("start_row") or 0),
+                    "start_col": int(op.get("start_col") or 0),
+                    "csv_data": csv_data,
+                },
+                timeout=180,
+            )
+            return {"op": name, "ok": True, "sheet_id": sheet_id, "result": result}
+        if name in ("find_replace", "replace"):
+            find = str(op.get("find") or op.get("old") or "")
+            replace = str(op.get("replace") or op.get("new") or "")
+            if not find:
+                raise SdkError("replace requires find")
+            result = tool_call(
+                "sheet_replace",
+                {
+                    "file_id": file_id,
+                    "sheet_id": sheet_id,
+                    "find_text": find,
+                    "replace_text": replace,
+                },
+                timeout=120,
+            )
+            return {"op": name, "ok": True, "sheet_id": sheet_id, "result": result}
+        raise SdkError(f"unsupported xlsx op: {name}")
+
+    if fmt == "pptx":
+        if name in ("find_replace", "replace"):
+            find = str(op.get("find") or op.get("old") or "")
+            replace = str(op.get("replace") or op.get("new") or "")
+            if not find:
+                raise SdkError("find_replace requires find")
+            args: dict[str, Any] = {
+                "file_id": file_id,
+                "find_text": find,
+                "replace_text": replace,
+            }
+            if op.get("page_index") is not None:
+                args["page_index"] = int(op["page_index"])
+            result = tool_call("slide_find_replace_text", args, timeout=120)
+            return {"op": name, "ok": True, "result": result}
+        raise SdkError(f"unsupported pptx op: {name}")
+
+    raise SdkError(f"unsupported format for patch: {fmt}")
+
+
+def document_patch(
+    file_path: str,
+    ops: list[dict] | None = None,
+    format: str | None = None,
+) -> dict:
+    """In-place Office edits via editor_sdk (open → ops → save)."""
+    path = _abs(file_path)
+    fmt = detect_format(path, format)
+    if fmt not in ("docx", "xlsx", "pptx"):
+        return {
+            "ok": False,
+            "error": f"document_patch supports docx/xlsx/pptx only, got {fmt}",
+            "format": fmt,
+            "file_path": str(path),
+        }
+    if not ops or not isinstance(ops, list):
+        return {"ok": False, "error": "ops must be a non-empty list", "file_path": str(path)}
+    try:
+        file_id = _ensure_office_file_id(path, fmt)
+        applied: list[dict] = []
+        for i, op in enumerate(ops):
+            if not isinstance(op, dict):
+                return {"ok": False, "error": f"ops[{i}] must be an object", "applied": applied}
+            applied.append(_apply_patch_op(fmt, file_id, op))
+        _save_office(file_id, path)
+        _cache_file_id(path, file_id)
+        return {
+            "ok": True,
+            "format": fmt,
+            "file_path": str(path),
+            "file_id": file_id,
+            "applied": applied,
+            "engine": "editor_sdk",
+            "mode": "in_place",
+            "cached_file_id": _cached_file_id(path),
+        }
+    except SdkError as e:
+        return {"ok": False, "error": str(e), "format": fmt, "file_path": str(path)}
+    except OSError as e:
+        return {"ok": False, "error": str(e), "format": fmt, "file_path": str(path)}
+    except (TypeError, ValueError) as e:
         return {"ok": False, "error": str(e), "format": fmt, "file_path": str(path)}
 
 

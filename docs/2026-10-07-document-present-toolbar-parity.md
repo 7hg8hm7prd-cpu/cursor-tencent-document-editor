@@ -22,9 +22,12 @@ WorkBuddy / Hermes 统一画布对 md/html 有完整编辑项。
 | insert | 链接 / 图片 | ✓ | ✓ |
 | note | 脚注 / 尾注 / 批注 | ✓ | ✓ |
 | doc | 目录 / 导航 | ✓ | 导航 |
+| ai | AI 改写（Hermes） | ✓ | ✓ |
+| ai | 框选 | — | ✓ |
 | chrome | 源码 / 保存 | ✓ | ✓ |
 
-非目标（本期）：AI 改写、框选 AI、批注泳道、workspace:// 文件选择（图片改为本地上传到同目录）。
+已实现：AI / 框选经 preview `/api/ai/*` 转发本机 Hermes。  
+非目标（本期）：批注泳道、workspace:// 文件选择（图片改为本地上传到同目录）。
 
 ## 实现
 

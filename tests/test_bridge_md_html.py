@@ -69,6 +69,8 @@ class McpServerProtocolTests(unittest.TestCase):
                 "document_present",
                 "document_preview",
                 "document_edit",
+                "document_patch",
+                "document_ai_rewrite",
                 "document_convert",
                 "document_sdk_status",
             },

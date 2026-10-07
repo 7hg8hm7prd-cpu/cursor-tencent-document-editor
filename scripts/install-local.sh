@@ -58,6 +58,7 @@ servers = data.setdefault("mcpServers", {})
 env = {
     "EDITOR_SDK_PORT": "39099",
     "DOCUMENT_EDITOR_PLUGIN_ROOT": dest,
+    "HERMES_WEBUI_BASE": "http://127.0.0.1:8787",
 }
 if sdk:
     env["EDITOR_SDK_BIN"] = sdk

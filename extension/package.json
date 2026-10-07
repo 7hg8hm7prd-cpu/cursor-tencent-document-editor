@@ -2,7 +2,7 @@
   "name": "tencent-document-present",
   "displayName": "Tencent Document Present",
   "description": "Open .md / .html in visual present by default; reopen with Text Editor for source.",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "publisher": "tax-hermes",
   "engines": {
     "vscode": "^1.80.0"

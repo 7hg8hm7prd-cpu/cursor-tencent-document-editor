@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from bridge import _abs, _html_to_md, _md_to_html, detect_format
+from hermes_ai import ai_status, inline_edit, rewrite
 
 DEFAULT_PORT = int(os.environ.get("DOCUMENT_PREVIEW_PORT", "39110") or "39110")
 _PORT: int | None = None
@@ -64,6 +65,9 @@ class Handler(BaseHTTPRequestHandler):
         qs = urllib.parse.parse_qs(parsed.query)
         if parsed.path == "/health":
             return self._json(200, {"ok": True, "service": "document-present"})
+        if parsed.path == "/api/ai/status":
+            st = ai_status()
+            return self._json(200 if st.get("ok") else 503, st)
         if parsed.path in ("/", "/edit"):
             self._send(200, _load_editor_html(), "text/html; charset=utf-8")
             return
@@ -219,6 +223,27 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, {"ok": True, "path": str(p), "bytes": len(text.encode("utf-8"))})
             except OSError as e:
                 return self._json(500, {"ok": False, "error": str(e)})
+
+        if parsed.path == "/api/ai/inline-edit":
+            out = inline_edit(
+                str(body.get("selection") or ""),
+                str(body.get("instruction") or ""),
+                body.get("model"),
+            )
+            return self._json(200 if out.get("ok") is not False else 502, out)
+
+        if parsed.path == "/api/ai/rewrite":
+            parts = body.get("parts") or []
+            if not isinstance(parts, list):
+                return self._json(400, {"ok": False, "error": "parts must be a list"})
+            out = rewrite(
+                str(body.get("instruction") or ""),
+                parts,
+                format=str(body.get("format") or "md"),
+                model=body.get("model"),
+                session_id=body.get("session_id"),
+            )
+            return self._json(200 if out.get("ok") is not False else 502, out)
 
         self._json(404, {"ok": False, "error": "not found"})
 

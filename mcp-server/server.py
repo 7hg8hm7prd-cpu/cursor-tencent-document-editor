@@ -19,13 +19,15 @@ if str(_HERE) not in sys.path:
 from bridge import (  # noqa: E402
     document_convert,
     document_edit,
+    document_patch,
     document_present,
     document_preview,
     sdk_status,
 )
+from hermes_ai import document_ai_rewrite  # noqa: E402
 
 SERVER_NAME = "tencent-document-editor"
-SERVER_VERSION = "1.1.0"
+SERVER_VERSION = "1.5.0"
 
 TOOLS = [
     {
@@ -84,7 +86,8 @@ TOOLS = [
         "description": (
             "Write/replace document content. "
             "md/html: overwrite text file. "
-            "docx/pptx/xlsx: create via editor_sdk and save. "
+            "docx/pptx/xlsx with mode=rewrite (default): create_* rebuild via editor_sdk. "
+            "For in-place Office edits use document_patch. "
             "pdf: not supported."
         ),
         "inputSchema": {
@@ -102,8 +105,86 @@ TOOLS = [
                     "enum": ["md", "html", "text", "csv"],
                     "description": "How to interpret content when writing office files (default md)",
                 },
+                "mode": {
+                    "type": "string",
+                    "enum": ["rewrite", "in_place"],
+                    "description": "rewrite=full rebuild (default). in_place redirects to document_patch.",
+                },
             },
             "required": ["file_path", "content"],
+        },
+    },
+    {
+        "name": "document_patch",
+        "description": (
+            "In-place Office edit: open existing docx/xlsx/pptx, apply ops, save. "
+            "docx: find_replace; xlsx: set_csv / replace; pptx: find_replace. "
+            "Prefer this over document_edit for small changes."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "description": "Existing Office file path"},
+                "format": {
+                    "type": "string",
+                    "enum": ["docx", "pptx", "xlsx"],
+                    "description": "Optional format override",
+                },
+                "ops": {
+                    "type": "array",
+                    "description": "List of patch operations",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "op": {
+                                "type": "string",
+                                "enum": ["find_replace", "replace", "set_csv", "set_range"],
+                            },
+                            "find": {"type": "string"},
+                            "replace": {"type": "string"},
+                            "csv_data": {"type": "string"},
+                            "sheet_id": {"type": "string"},
+                            "start_row": {"type": "integer"},
+                            "start_col": {"type": "integer"},
+                            "page_index": {"type": "integer"},
+                            "replace_all": {"type": "boolean"},
+                        },
+                        "required": ["op"],
+                    },
+                },
+            },
+            "required": ["file_path", "ops"],
+        },
+    },
+    {
+        "name": "document_ai_rewrite",
+        "description": (
+            "AI rewrite via local Hermes WebUI (HERMES_WEBUI_BASE). "
+            "Provide selection (inline-edit) or parts (canvas rewrite). "
+            "Requires Hermes running on this machine."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "instruction": {"type": "string", "description": "How to rewrite"},
+                "selection": {"type": "string", "description": "Selected text for inline-edit"},
+                "parts": {
+                    "type": "array",
+                    "description": "Block parts [{id, md|html}]",
+                    "items": {"type": "object"},
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["md", "html"],
+                    "description": "Content format for parts rewrite (default md)",
+                },
+                "model": {"type": "string"},
+                "file_path": {
+                    "type": "string",
+                    "description": "Optional path for logging / validation only",
+                },
+            },
+            "required": ["instruction"],
         },
     },
     {
@@ -182,6 +263,26 @@ def call_tool(name: str, arguments: dict | None) -> dict:
                     args.get("content", ""),
                     args.get("format"),
                     args.get("content_format"),
+                    args.get("mode"),
+                )
+            )
+        if name == "document_patch":
+            return _ok_text(
+                document_patch(
+                    args.get("file_path", ""),
+                    args.get("ops"),
+                    args.get("format"),
+                )
+            )
+        if name == "document_ai_rewrite":
+            return _ok_text(
+                document_ai_rewrite(
+                    args.get("instruction", ""),
+                    selection=args.get("selection"),
+                    parts=args.get("parts"),
+                    format=str(args.get("format") or "md"),
+                    model=args.get("model"),
+                    file_path=args.get("file_path"),
                 )
             )
         if name == "document_convert":
