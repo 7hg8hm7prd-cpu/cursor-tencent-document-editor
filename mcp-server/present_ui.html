@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Document Present</title>
+<style>
+  :root {
+    --bg:#f7f8fa; --panel:#fff; --line:#e6e8eb; --text:#1f2329; --muted:#8a8f98;
+    --accent:#1a6cff; --chip:#fafbfc; --ghost:#c9cdd4;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; color: var(--text); background: var(--bg); }
+  .top {
+    display:flex; flex-direction:column; gap:6px; padding:8px 10px;
+    background:var(--panel); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5;
+  }
+  .top-row { display:flex; align-items:center; gap:8px; min-height:28px; }
+  .top-row strong { font-size:13px; margin-right:auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:36vw; }
+  .btn { font-size:12px; padding:5px 10px; border:1px solid var(--line); background:var(--chip); border-radius:6px; cursor:pointer; }
+  .btn:hover { border-color:#c9cdd4; }
+  .btn-primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .btn.active { background:#e8f1ff; border-color:#9dc0ff; color:#0b57d0; }
+  .status { font-size:12px; color:var(--muted); min-width:96px; text-align:right; }
+  .tools {
+    display:flex; flex-wrap:wrap; align-items:center; gap:4px;
+  }
+  .tools .sep { width:1px; height:18px; background:var(--line); margin:0 4px; }
+  .chip {
+    min-width:28px; height:28px; padding:0 8px; border:1px solid var(--line); border-radius:6px;
+    background:var(--chip); cursor:pointer; font-size:12px; display:inline-flex; align-items:center; justify-content:center; gap:4px;
+  }
+  .chip:hover { border-color:#c9cdd4; }
+  .chip:disabled, .chip.is-ghost { opacity:.45; cursor:not-allowed; }
+  .chip.is-b { font-weight:700; }
+  .chip.is-i { font-style:italic; }
+  .chip.is-u { text-decoration:underline; }
+  .chip.is-s { text-decoration:line-through; }
+  .drop { position:relative; display:inline-flex; }
+  .menu {
+    position:absolute; top:100%; left:0; margin-top:4px; min-width:120px;
+    background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,.08);
+    z-index:20; padding:4px;
+  }
+  .menu[hidden] { display:none !important; }
+  .menu button {
+    display:block; width:100%; text-align:left; border:0; background:transparent; padding:6px 8px;
+    border-radius:6px; cursor:pointer; font-size:12px;
+  }
+  .menu button:hover { background:#f0f2f5; }
+  .body { display:flex; gap:0; max-width:min(1200px, 100%); margin:0 auto; padding:12px 12px 48px; box-sizing:border-box; }
+  .main { flex:1; min-width:0; max-width:100%; overflow:hidden; }
+  #editor {
+    min-height:70vh; background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:28px 28px; outline:none; line-height:1.7; font-size:15px;
+    max-width:100%; overflow-x:auto; overflow-wrap:anywhere; word-break:break-word;
+  }
+  #editor:focus { border-color:#9dc0ff; box-shadow:0 0 0 3px rgba(26,108,255,.12); }
+  #editor h1 { font-size:1.8em; margin:0.6em 0 0.4em; }
+  #editor h2 { font-size:1.4em; margin:0.8em 0 0.4em; }
+  #editor h3 { font-size:1.2em; margin:0.8em 0 0.3em; }
+  #editor p { margin:0.5em 0; overflow-wrap:anywhere; }
+  #editor ul, #editor ol { padding-left:1.4em; }
+  #editor table {
+    border-collapse:collapse; width:100%; max-width:100%; margin:0.8em 0;
+    table-layout:fixed;
+  }
+  #editor th, #editor td {
+    border:1px solid #d0d3d9; padding:6px 10px; vertical-align:top;
+    overflow-wrap:anywhere; word-break:break-word; white-space:normal;
+  }
+  #editor th { background:#f0f2f5; }
+  #editor img { max-width:100%; height:auto; }
+  #editor a { overflow-wrap:anywhere; word-break:break-all; }
+  #editor code {
+    background:#f0f2f5; padding:0 4px; border-radius:3px;
+    font-family:ui-monospace, Menlo, monospace; font-size:0.92em;
+    white-space:pre-wrap; overflow-wrap:anywhere; word-break:break-all;
+  }
+  #editor pre {
+    background:#f0f2f5; padding:12px; border-radius:8px;
+    max-width:100%; overflow-x:auto; white-space:pre;
+  }
+  #editor pre code { white-space:pre; word-break:normal; }
+  #editor blockquote {
+    border-left:3px solid #d0d3d9; margin:0.6em 0; padding:0.2em 0.8em; color:#5c6370;
+    overflow-wrap:anywhere;
+  }
+  #editor sup.fn-ref, #editor sup.note-ref {
+    color:var(--accent); cursor:pointer; font-size:0.75em; margin:0 1px; user-select:none;
+  }
+  #editor mark.note-hl { background:#fff3bf; }
+  #editor li.task { list-style:none; margin-left:-1.2em; }
+  #editor li.task input { margin-right:6px; }
+  #source {
+    display:none; width:100%; min-height:70vh; font-family:ui-monospace, Menlo, monospace;
+    font-size:13px; line-height:1.55; padding:16px; border:1px solid var(--line); border-radius:10px; resize:vertical;
+  }
+  .nav {
+    width:220px; flex:0 0 220px; margin-left:12px; background:var(--panel);
+    border:1px solid var(--line); border-radius:10px; padding:10px; max-height:75vh; overflow:auto;
+    position:sticky; top:88px; display:none;
+  }
+  .nav.open { display:block; }
+  .nav h4 { margin:0 0 8px; font-size:12px; color:var(--muted); font-weight:600; }
+  .nav a {
+    display:block; font-size:12px; color:var(--text); text-decoration:none; padding:4px 6px; border-radius:4px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .nav a:hover { background:#f0f2f5; }
+  .nav a.l2 { padding-left:14px; }
+  .nav a.l3 { padding-left:24px; color:#5c6370; }
+  .form {
+    display:none; gap:6px; align-items:center; flex-wrap:wrap; padding:6px 0 0;
+  }
+  .form.open { display:flex; }
+  .form input, .form select {
+    font-size:12px; padding:5px 8px; border:1px solid var(--line); border-radius:6px; min-width:140px;
+  }
+  .toast {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:#1f2329; color:#fff; padding:8px 14px; border-radius:8px; font-size:12px;
+    opacity:0; pointer-events:none; transition:opacity .2s; z-index:50;
+  }
+  .toast.show { opacity:1; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="top-row">
+      <strong id="title">…</strong>
+      <button class="btn" id="sourceIdeBtn" type="button" style="display:none" title="在 Cursor 文本编辑器中打开">编辑源码</button>
+      <button class="btn" id="modeBtn" type="button">源码</button>
+      <button class="btn btn-primary" id="saveBtn" type="button">保存</button>
+      <span class="status" id="status">就绪</span>
+    </div>
+    <div class="tools" id="tools" role="toolbar" aria-label="文档编辑"></div>
+    <div class="form" id="formBar">
+      <span id="formLabel"></span>
+      <input id="formText" type="text" placeholder="文字"/>
+      <input id="formUrl" type="text" placeholder="地址 / 路径"/>
+      <input id="formFile" type="file" accept="image/*" style="display:none"/>
+      <button class="btn" id="formPick" type="button" style="display:none">选择图片</button>
+      <button class="btn btn-primary" id="formOk" type="button">插入</button>
+      <button class="btn" id="formCancel" type="button">取消</button>
+    </div>
+  </div>
+  <div class="body">
+    <div class="main">
+      <div id="editor" contenteditable="true" spellcheck="true"></div>
+      <textarea id="source" spellcheck="false"></textarea>
+    </div>
+    <aside class="nav" id="nav"><h4>导航</h4><div id="navList"></div></aside>
+  </div>
+  <div class="toast" id="toast"></div>
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var CFG = window.__PRESENT__ || {};
+  var filePath = CFG.path || params.get('path') || '';
+  var fmt = String(CFG.format || params.get('format') || 'md').toLowerCase();
+  var API_BASE = String(CFG.base || '').replace(/\/$/, '');
+  var mode = 'visual';
+  var formKind = null;
+  var undoStack = [];
+  var redoStack = [];
+  var typingTimer = null;
+  var lastSnap = '';
+
+  var title = document.getElementById('title');
+  var editor = document.getElementById('editor');
+  var source = document.getElementById('source');
+  var status = document.getElementById('status');
+  var tools = document.getElementById('tools');
+  var nav = document.getElementById('nav');
+  var navList = document.getElementById('navList');
+  var formBar = document.getElementById('formBar');
+  var toastEl = document.getElementById('toast');
+  var sourceIdeBtn = document.getElementById('sourceIdeBtn');
+
+  title.textContent = filePath.split('/').pop() || filePath;
+  if (sourceIdeBtn) {
+    if (window.__vscode) sourceIdeBtn.style.display = '';
+    else sourceIdeBtn.style.display = 'none';
+    sourceIdeBtn.addEventListener('click', function () {
+      if (window.__vscode) window.__vscode.postMessage({ type: 'openSource' });
+    });
+  }
+
+  function setStatus(t) { status.textContent = t; }
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    setTimeout(function () { toastEl.classList.remove('show'); }, 1800);
+  }
+
+  function apiUrl(path) {
+    if (/^https?:\/\//i.test(path)) return path;
+    return API_BASE + path;
+  }
+
+  var _reqSeq = 0;
+  var _pending = {};
+
+  if (window.__vscode) {
+    window.addEventListener('message', function (ev) {
+      var msg = ev.data;
+      if (!msg || msg.type !== 'apiResult' || msg.id == null) return;
+      var p = _pending[msg.id];
+      if (!p) return;
+      delete _pending[msg.id];
+      if (msg.ok === false) p.reject(new Error(msg.error || 'bridge error'));
+      else p.resolve(msg.data);
+    });
+  }
+
+  function apiViaBridge(path, opts) {
+    opts = opts || {};
+    return new Promise(function (resolve, reject) {
+      var id = ++_reqSeq;
+      _pending[id] = { resolve: resolve, reject: reject };
+      var method = (opts.method || 'GET').toUpperCase();
+      var body = opts.body;
+      // FormData cannot be cloned to extension; upload uses separate path
+      window.__vscode.postMessage({
+        type: 'api',
+        id: id,
+        method: method,
+        path: path,
+        body: typeof body === 'string' ? body : (body ? String(body) : null),
+        headers: opts.headers || {}
+      });
+      setTimeout(function () {
+        if (_pending[id]) {
+          delete _pending[id];
+          reject(new Error('bridge timeout'));
+        }
+      }, 15000);
+    }).then(function (j) {
+      if (!j || j.ok === false) throw new Error((j && j.error) || 'request failed');
+      return j;
+    });
+  }
+
+  function api(path, opts) {
+    // Cursor webview blocks fetch() to localhost — always use extension bridge when available.
+    if (window.__vscode) return apiViaBridge(path, opts);
+    return fetch(apiUrl(path), opts).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
+        return j;
+      });
+    });
+  }
+
+  function endKind() { return fmt === 'html' ? 'html' : 'md'; }
+
+  /* WorkBuddy / Hermes canvas_tools.definitions 对齐（无 AI） */
+  var DEFS = [
+    { id: 'undo', group: 'hist', ends: ['md','html'], label: '↶', title: '撤销' },
+    { id: 'redo', group: 'hist', ends: ['md','html'], label: '↷', title: '重做' },
+    { id: 'bold', group: 'fmt', ends: ['md','html'], label: 'B', className: 'is-b', title: '加粗' },
+    { id: 'italic', group: 'fmt', ends: ['md','html'], label: 'I', className: 'is-i', title: '斜体' },
+    { id: 'code', group: 'fmt', ends: ['md'], label: '</>', title: '行内代码' },
+    { id: 'quote', group: 'fmt', ends: ['md'], label: '引用', title: '引用块' },
+    { id: 'hr', group: 'fmt', ends: ['md'], label: '分隔', title: '分隔线' },
+    { id: 'underline', group: 'fmt', ends: ['html'], label: 'U', className: 'is-u', title: '下划线' },
+    { id: 'strike', group: 'fmt', ends: ['html'], label: 'S', className: 'is-s', title: '删除线' },
+    { id: 'fontSize', group: 'fmt', ends: ['html'], type: 'drop', title: '字号',
+      items: [
+        { html: '12px', value: '12px' }, { html: '14px', value: '14px' },
+        { html: '16px', value: '16px' }, { html: '18px', value: '18px' },
+        { html: '24px', value: '24px' }, { html: '32px', value: '32px' }
+      ], label: '字号' },
+    { id: 'align', group: 'fmt', ends: ['html'], type: 'drop', title: '对齐',
+      items: [
+        { html: '左对齐', value: 'left' }, { html: '居中', value: 'center' },
+        { html: '右对齐', value: 'right' }, { html: '两端', value: 'justify' }
+      ], label: '对齐' },
+    { id: 'foreColor', group: 'fmt', ends: ['html'], type: 'drop', title: '颜色',
+      items: [
+        { html: '<span style="color:#1f2329">■</span> 默认', value: '#1f2329' },
+        { html: '<span style="color:#d83931">■</span> 红', value: '#d83931' },
+        { html: '<span style="color:#1a6cff">■</span> 蓝', value: '#1a6cff' },
+        { html: '<span style="color:#2a9d5c">■</span> 绿', value: '#2a9d5c' },
+        { html: '<span style="color:#b25e09">■</span> 橙', value: '#b25e09' }
+      ], label: '颜色' },
+    { id: 'h1', group: 'head', ends: ['md','html'], label: 'H1', title: '一级标题' },
+    { id: 'h2', group: 'head', ends: ['md','html'], label: 'H2', title: '二级标题' },
+    { id: 'h3', group: 'head', ends: ['md','html'], label: 'H3', title: '三级标题' },
+    { id: 'ul', group: 'list', ends: ['md','html'], label: '列表', title: '无序列表' },
+    { id: 'ol', group: 'list', ends: ['md','html'], label: '编号', title: '有序列表' },
+    { id: 'task', group: 'list', ends: ['md','html'], label: '待办', title: '待办' },
+    { id: 'table', group: 'table', ends: ['md','html'], label: '表格', title: '插入表格' },
+    { id: 'row', group: 'table', ends: ['md','html'], label: '+行', title: '增行' },
+    { id: 'col', group: 'table', ends: ['md','html'], label: '+列', title: '增列' },
+    { id: 'delrow', group: 'table', ends: ['md','html'], label: '-行', title: '删行' },
+    { id: 'delcol', group: 'table', ends: ['md','html'], label: '-列', title: '删列' },
+    { id: 'link', group: 'insert', ends: ['md','html'], label: '链接', title: '插入链接' },
+    { id: 'file', group: 'insert', ends: ['md'], label: '文件', title: '插入文件链接' },
+    { id: 'image', group: 'insert', ends: ['md','html'], label: '图片', title: '插入图片' },
+    { id: 'fn', group: 'note', ends: ['md','html'], label: '脚注', title: '脚注' },
+    { id: 'en', group: 'note', ends: ['md','html'], label: '尾注', title: '尾注' },
+    { id: 'note', group: 'note', ends: ['md','html'], label: '批注', title: '批注' },
+    { id: 'toc', group: 'doc', ends: ['md'], label: '目录', title: '插入目录' },
+    { id: 'outline', group: 'doc', ends: ['md','html'], label: '导航', title: '大纲导航' }
+  ];
+
+  function renderTools() {
+    tools.innerHTML = '';
+    var end = endKind();
+    var lastGroup = null;
+    DEFS.forEach(function (def) {
+      if (def.ends.indexOf(end) === -1) return;
+      if (lastGroup && def.group !== lastGroup) {
+        var sep = document.createElement('span');
+        sep.className = 'sep';
+        tools.appendChild(sep);
+      }
+      lastGroup = def.group;
+      if (def.type === 'drop') {
+        var wrap = document.createElement('div');
+        wrap.className = 'drop';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'chip';
+        btn.title = def.title;
+        btn.textContent = def.label + ' ▾';
+        var menu = document.createElement('div');
+        menu.className = 'menu';
+        menu.hidden = true;
+        (def.items || []).forEach(function (item) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.innerHTML = item.html;
+          b.addEventListener('mousedown', function (e) { e.preventDefault(); });
+          b.addEventListener('click', function (e) {
+            e.preventDefault();
+            menu.hidden = true;
+            onAction(def.id, item);
+          });
+          menu.appendChild(b);
+        });
+        btn.addEventListener('mousedown', function (e) { e.preventDefault(); });
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          tools.querySelectorAll('.menu').forEach(function (m) { if (m !== menu) m.hidden = true; });
+          menu.hidden = !menu.hidden;
+        });
+        wrap.appendChild(btn);
+        wrap.appendChild(menu);
+        tools.appendChild(wrap);
+        return;
+      }
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'chip' + (def.className ? ' ' + def.className : '');
+      chip.title = def.title;
+      chip.textContent = def.label;
+      chip.setAttribute('data-tool', def.id);
+      chip.addEventListener('mousedown', function (e) { e.preventDefault(); });
+      chip.addEventListener('click', function (e) {
+        e.preventDefault();
+        onAction(def.id);
+      });
+      tools.appendChild(chip);
+    });
+  }
+
+  function pushHistory() {
+    var html = editor.innerHTML;
+    if (html === lastSnap) return;
+    undoStack.push(lastSnap);
+    if (undoStack.length > 50) undoStack.shift();
+    redoStack = [];
+    lastSnap = html;
+  }
+
+  function undo() {
+    if (!undoStack.length) return;
+    redoStack.push(editor.innerHTML);
+    editor.innerHTML = undoStack.pop();
+    lastSnap = editor.innerHTML;
+    refreshNav();
+  }
+
+  function redo() {
+    if (!redoStack.length) return;
+    undoStack.push(editor.innerHTML);
+    editor.innerHTML = redoStack.pop();
+    lastSnap = editor.innerHTML;
+    refreshNav();
+  }
+
+  function currentBlock() {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !editor.contains(sel.anchorNode)) return null;
+    var node = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+    while (node && node !== editor) {
+      if (/^(P|LI|H[1-6]|BLOCKQUOTE|TD|TH|PRE|UL|OL)$/.test(node.nodeName)) return node;
+      node = node.parentElement;
+    }
+    return editor;
+  }
+
+  function placeCaret(node) {
+    var range = document.createRange();
+    range.selectNodeContents(node);
+    range.collapse(false);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function insertHtml(html) {
+    editor.focus();
+    pushHistory();
+    var ok = document.execCommand('insertHTML', false, html);
+    if (!ok) {
+      var sel = window.getSelection();
+      if (sel && sel.rangeCount) {
+        var range = sel.getRangeAt(0);
+        range.deleteContents();
+        var tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        var frag = document.createDocumentFragment();
+        while (tmp.firstChild) frag.appendChild(tmp.firstChild);
+        range.insertNode(frag);
+      }
+    }
+    refreshNav();
+  }
+
+  function cell() {
+    var sel = window.getSelection();
+    if (!sel || !sel.anchorNode) return null;
+    var node = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement;
+    return node && node.closest ? node.closest('td,th') : null;
+  }
+
+  function editTable(kind) {
+    var td = cell();
+    if (!td) { toast('先把光标放进表格'); return; }
+    pushHistory();
+    var table = td.closest('table');
+    var row = td.parentElement;
+    if (kind === 'row') {
+      var tr = row.cloneNode(true);
+      Array.from(tr.children).forEach(function (c) { c.textContent = ' '; });
+      row.parentElement.insertBefore(tr, row.nextSibling);
+    } else if (kind === 'delrow') {
+      if (table.querySelectorAll('tr').length <= 2) { toast('至少保留两行'); return; }
+      row.remove();
+    } else if (kind === 'col') {
+      var index = Array.from(row.children).indexOf(td);
+      table.querySelectorAll('tr').forEach(function (tr) {
+        var ref = tr.children[index];
+        var node = document.createElement(ref && ref.nodeName === 'TH' ? 'th' : 'td');
+        node.textContent = ' ';
+        if (ref) ref.parentElement.insertBefore(node, ref.nextSibling);
+        else tr.appendChild(node);
+      });
+    } else if (kind === 'delcol') {
+      var idx = Array.from(row.children).indexOf(td);
+      if (row.children.length <= 1) { toast('至少保留一列'); return; }
+      table.querySelectorAll('tr').forEach(function (tr) {
+        if (tr.children[idx]) tr.children[idx].remove();
+      });
+    }
+  }
+
+  function insertTask() {
+    pushHistory();
+    var li = document.createElement('li');
+    li.className = 'task';
+    var box = document.createElement('input');
+    box.type = 'checkbox';
+    box.setAttribute('contenteditable', 'false');
+    li.appendChild(box);
+    li.appendChild(document.createTextNode(' 待办'));
+    var block = currentBlock();
+    if (block && block.nodeName === 'LI' && block.parentNode) {
+      block.parentNode.insertBefore(li, block.nextSibling);
+    } else {
+      var ul = document.createElement('ul');
+      ul.appendChild(li);
+      if (block && block !== editor && block.parentNode) block.parentNode.insertBefore(ul, block.nextSibling);
+      else editor.appendChild(ul);
+    }
+    placeCaret(li);
+  }
+
+  function slug(plain) {
+    var id = 'h-';
+    var text = String(plain || '').trim();
+    for (var i = 0; i < text.length; i++) {
+      var ch = text.charAt(i);
+      if (/[\w\u4e00-\u9fff-]/.test(ch)) id += ch;
+      else if (/\s/.test(ch)) id += '-';
+    }
+    return id.replace(/-+/g, '-').replace(/-$/g, '').slice(0, 52) || 'h-section';
+  }
+
+  function insertToc() {
+    pushHistory();
+    var h = document.createElement('h2');
+    h.textContent = '目录';
+    var ul = document.createElement('ul');
+    editor.querySelectorAll('h1,h2,h3').forEach(function (head) {
+      var text = (head.textContent || '').trim();
+      if (!text || text === '目录') return;
+      if (!head.id) head.id = slug(text);
+      var item = document.createElement('li');
+      var a = document.createElement('a');
+      a.href = '#' + head.id;
+      a.textContent = text;
+      item.appendChild(a);
+      ul.appendChild(item);
+    });
+    var block = currentBlock();
+    if (block && block !== editor && block.parentNode === editor) {
+      editor.insertBefore(h, block.nextSibling);
+      editor.insertBefore(ul, h.nextSibling);
+    } else {
+      editor.insertBefore(ul, editor.firstChild);
+      editor.insertBefore(h, ul);
+    }
+    refreshNav();
+  }
+
+  function ensureNoteSection(titleText, className) {
+    var sec = editor.querySelector('.' + className);
+    if (sec) return sec;
+    var h = document.createElement('h2');
+    h.textContent = titleText;
+    h.className = className + '-title';
+    var ol = document.createElement('ol');
+    ol.className = className;
+    editor.appendChild(h);
+    editor.appendChild(ol);
+    return ol;
+  }
+
+  function insertFootnote(kind) {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount || sel.isCollapsed) { toast('先划选一段文字'); return; }
+    pushHistory();
+    var isEnd = kind === 'en';
+    var list = ensureNoteSection(isEnd ? '尾注' : '脚注', isEnd ? 'endnotes' : 'footnotes');
+    var n = list.children.length + 1;
+    var id = (isEnd ? 'e' : 'f') + n;
+    var body = isEnd ? '尾注说明' : '脚注说明';
+    var sup = document.createElement('sup');
+    sup.className = 'fn-ref md-fn-ref';
+    sup.setAttribute('data-fn', id);
+    sup.textContent = isEnd ? String.fromCharCode(96 + Math.min(n, 26)) : String(n);
+    try {
+      sel.getRangeAt(0).collapse(false);
+      sel.getRangeAt(0).insertNode(sup);
+    } catch (e) {
+      insertHtml(sup.outerHTML);
+    }
+    var li = document.createElement('li');
+    li.setAttribute('data-fn-def', id);
+    li.setAttribute('data-fn-body', body);
+    li.textContent = body;
+    list.appendChild(li);
+  }
+
+  function insertNote() {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount || sel.isCollapsed) { toast('先划选一段文字'); return; }
+    pushHistory();
+    var range = sel.getRangeAt(0);
+    var mark = document.createElement('mark');
+    mark.className = 'note-hl';
+    try {
+      range.surroundContents(mark);
+    } catch (e) {
+      toast('选区跨块，请缩小选区');
+      return;
+    }
+    var list = ensureNoteSection('批注', 'notes');
+    var n = list.children.length + 1;
+    var id = 'c' + n;
+    var body = '批注：';
+    var sup = document.createElement('sup');
+    sup.className = 'note-ref md-fn-ref';
+    sup.setAttribute('data-fn', id);
+    sup.textContent = '批' + n;
+    mark.appendChild(sup);
+    var li = document.createElement('li');
+    li.setAttribute('data-fn-def', id);
+    li.setAttribute('data-fn-body', body);
+    li.textContent = body;
+    list.appendChild(li);
+  }
+
+  function refreshNav() {
+    navList.innerHTML = '';
+    editor.querySelectorAll('h1,h2,h3').forEach(function (head) {
+      var text = (head.textContent || '').trim();
+      if (!text) return;
+      if (!head.id) head.id = slug(text);
+      var a = document.createElement('a');
+      a.href = '#' + head.id;
+      a.textContent = text;
+      a.className = 'l' + head.nodeName.charAt(1);
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        head.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      navList.appendChild(a);
+    });
+  }
+
+  function showForm(kind) {
+    formKind = kind;
+    formBar.classList.add('open');
+    document.getElementById('formLabel').textContent =
+      kind === 'link' ? '链接' : kind === 'file' ? '文件' : kind === 'image' ? '图片' : kind;
+    document.getElementById('formText').value = window.getSelection().toString() || '';
+    document.getElementById('formUrl').value = '';
+    document.getElementById('formPick').style.display = kind === 'image' ? '' : 'none';
+    document.getElementById('formUrl').style.display = kind === 'image' ? 'none' : '';
+    document.getElementById('formUrl').placeholder =
+      kind === 'file' ? '相对路径或 URL' : '地址 / 路径';
+    document.getElementById('formText').placeholder =
+      kind === 'image' ? '替代文字（可选）' : kind === 'file' ? '显示名' : '显示文字';
+  }
+
+  function hideForm() {
+    formKind = null;
+    formBar.classList.remove('open');
+  }
+
+  function onAction(id, item) {
+    if (mode !== 'visual') { toast('请先切回可视模式'); return; }
+    editor.focus();
+    if (id === 'undo') return undo();
+    if (id === 'redo') return redo();
+    if (id === 'bold' || id === 'italic' || id === 'underline' || id === 'strike') {
+      pushHistory();
+      document.execCommand(id === 'strike' ? 'strikeThrough' : id, false, null);
+      return;
+    }
+    if (id === 'h1' || id === 'h2' || id === 'h3') {
+      pushHistory();
+      document.execCommand('formatBlock', false, id.toUpperCase());
+      refreshNav();
+      return;
+    }
+    if (id === 'ul') { pushHistory(); document.execCommand('insertUnorderedList'); return; }
+    if (id === 'ol') { pushHistory(); document.execCommand('insertOrderedList'); return; }
+    if (id === 'task') return insertTask();
+    if (id === 'table') {
+      return insertHtml('<table><thead><tr><th>列1</th><th>列2</th><th>列3</th></tr></thead><tbody><tr><td> </td><td> </td><td> </td></tr><tr><td> </td><td> </td><td> </td></tr></tbody></table>');
+    }
+    if (id === 'row' || id === 'col' || id === 'delrow' || id === 'delcol') return editTable(id);
+    if (id === 'link') return showForm('link');
+    if (id === 'file') return showForm('file');
+    if (id === 'image') return showForm('image');
+    if (id === 'fn') return insertFootnote('fn');
+    if (id === 'en') return insertFootnote('en');
+    if (id === 'note') return insertNote();
+    if (id === 'toc') return insertToc();
+    if (id === 'quote') {
+      pushHistory();
+      document.execCommand('formatBlock', false, 'BLOCKQUOTE');
+      return;
+    }
+    if (id === 'hr') return insertHtml('<hr/>');
+    if (id === 'code') {
+      pushHistory();
+      document.execCommand('insertHTML', false, '<code>' + (window.getSelection().toString() || 'code') + '</code>');
+      return;
+    }
+    if (id === 'outline') {
+      nav.classList.toggle('open');
+      refreshNav();
+      return;
+    }
+    if (id === 'fontSize' && item) {
+      pushHistory();
+      document.execCommand('fontSize', false, '7');
+      editor.querySelectorAll('font[size="7"]').forEach(function (el) {
+        var span = document.createElement('span');
+        span.style.fontSize = item.value;
+        span.innerHTML = el.innerHTML;
+        el.parentNode.replaceChild(span, el);
+      });
+      return;
+    }
+    if (id === 'align' && item) {
+      pushHistory();
+      var map = { left: 'justifyLeft', center: 'justifyCenter', right: 'justifyRight', justify: 'justifyFull' };
+      document.execCommand(map[item.value] || 'justifyLeft');
+      return;
+    }
+    if (id === 'foreColor' && item) {
+      pushHistory();
+      document.execCommand('foreColor', false, item.value);
+    }
+  }
+
+  function visualToPayload() {
+    if (fmt === 'md') return { format: 'md', html: editor.innerHTML };
+    var raw = source.value || '';
+    if (/<body[\s\S]*<\/body>/i.test(raw)) {
+      raw = raw.replace(/<body([^>]*)>[\s\S]*?<\/body>/i, '<body$1>' + editor.innerHTML + '</body>');
+      return { format: 'html', content: raw };
+    }
+    return { format: 'html', content: editor.innerHTML };
+  }
+
+  function save() {
+    setStatus('保存中…');
+    var body = mode === 'source'
+      ? { format: fmt, content: source.value }
+      : visualToPayload();
+    body.path = filePath;
+    api('/api/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function () {
+      setStatus('已保存 ' + new Date().toLocaleTimeString());
+      if (mode === 'visual' && fmt === 'md') {
+        return api('/api/content?path=' + encodeURIComponent(filePath)).then(function (j) {
+          source.value = j.content || '';
+        });
+      }
+      if (mode === 'visual' && fmt === 'html') {
+        source.value = visualToPayload().content;
+      }
+    }).catch(function (e) { setStatus('保存失败: ' + e.message); });
+  }
+
+  function load() {
+    setStatus('加载中…');
+    return api('/api/content?path=' + encodeURIComponent(filePath)).then(function (j) {
+      fmt = j.format || fmt;
+      renderTools();
+      if (fmt === 'md') {
+        editor.innerHTML = j.html || '<p></p>';
+        source.value = j.content || '';
+      } else {
+        source.value = j.content || '';
+        var tmp = document.createElement('div');
+        tmp.innerHTML = j.content || '';
+        var body = tmp.querySelector('body');
+        editor.innerHTML = body ? body.innerHTML : (j.content || '');
+      }
+      lastSnap = editor.innerHTML;
+      undoStack = [];
+      redoStack = [];
+      refreshNav();
+      setStatus('已加载');
+    }).catch(function (e) { setStatus('加载失败: ' + e.message); });
+  }
+
+  document.getElementById('modeBtn').addEventListener('click', function () {
+    var modeBtn = document.getElementById('modeBtn');
+    if (mode === 'visual') {
+      if (fmt === 'html') source.value = visualToPayload().content;
+      editor.style.display = 'none';
+      source.style.display = 'block';
+      mode = 'source';
+      modeBtn.textContent = '可视';
+      modeBtn.classList.add('active');
+      tools.style.opacity = '0.4';
+      tools.style.pointerEvents = 'none';
+    } else {
+      if (fmt === 'html') {
+        var tmp = document.createElement('div');
+        tmp.innerHTML = source.value || '';
+        var body = tmp.querySelector('body');
+        editor.innerHTML = body ? body.innerHTML : source.value;
+      } else {
+        api('/api/render', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ format: 'md', content: source.value })
+        }).then(function (j) { editor.innerHTML = j.html || ''; refreshNav(); });
+      }
+      source.style.display = 'none';
+      editor.style.display = 'block';
+      mode = 'visual';
+      modeBtn.textContent = '源码';
+      modeBtn.classList.remove('active');
+      tools.style.opacity = '';
+      tools.style.pointerEvents = '';
+      lastSnap = editor.innerHTML;
+    }
+  });
+
+  document.getElementById('saveBtn').addEventListener('click', save);
+  document.getElementById('formCancel').addEventListener('click', hideForm);
+  document.getElementById('formPick').addEventListener('click', function () {
+    document.getElementById('formFile').click();
+  });
+  document.getElementById('formFile').addEventListener('change', function () {
+    var f = this.files && this.files[0];
+    if (!f) return;
+    var fd = new FormData();
+    fd.append('file', f);
+    fd.append('path', filePath);
+    setStatus('上传中…');
+    if (window.__vscode) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var dataUrl = String(reader.result || '');
+        var b64 = dataUrl.split(',')[1] || '';
+        var id = ++_reqSeq;
+        _pending[id] = {
+          resolve: function (j) {
+            if (!j || j.ok === false) { setStatus('上传失败: ' + ((j && j.error) || 'fail')); return; }
+            var alt = document.getElementById('formText').value || j.name || 'image';
+            insertHtml('<img src="' + j.url + '" alt="' + alt.replace(/"/g, '&quot;') + '"/>');
+            hideForm();
+            setStatus('已插入图片');
+          },
+          reject: function (e) { setStatus('上传失败: ' + e.message); }
+        };
+        window.__vscode.postMessage({
+          type: 'upload',
+          id: id,
+          path: filePath,
+          filename: f.name,
+          base64: b64
+        });
+      };
+      reader.onerror = function () { setStatus('读取图片失败'); };
+      reader.readAsDataURL(f);
+      return;
+    }
+    fetch(apiUrl('/api/upload'), { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ok) throw new Error(j.error || 'upload failed');
+        var alt = document.getElementById('formText').value || j.name || 'image';
+        insertHtml('<img src="' + j.url + '" alt="' + alt.replace(/"/g, '&quot;') + '"/>');
+        hideForm();
+        setStatus('已插入图片');
+      })
+      .catch(function (e) { setStatus('上传失败: ' + e.message); });
+  });
+  document.getElementById('formOk').addEventListener('click', function () {
+    if (formKind === 'link' || formKind === 'file') {
+      var text = document.getElementById('formText').value || (formKind === 'file' ? '文件' : '链接');
+      var url = document.getElementById('formUrl').value || '#';
+      insertHtml('<a href="' + url.replace(/"/g, '&quot;') + '">' + text.replace(/</g, '&lt;') + '</a>');
+      hideForm();
+    } else if (formKind === 'image') {
+      document.getElementById('formFile').click();
+    }
+  });
+
+  document.addEventListener('keydown', function (ev) {
+    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 's') {
+      ev.preventDefault();
+      save();
+    }
+    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z' && !ev.shiftKey) {
+      if (mode === 'visual' && document.activeElement === editor) {
+        ev.preventDefault();
+        undo();
+      }
+    }
+    if ((ev.metaKey || ev.ctrlKey) && (ev.key.toLowerCase() === 'y' || (ev.key.toLowerCase() === 'z' && ev.shiftKey))) {
+      if (mode === 'visual' && document.activeElement === editor) {
+        ev.preventDefault();
+        redo();
+      }
+    }
+    if (ev.key === 'Escape') hideForm();
+  });
+
+  editor.addEventListener('input', function () {
+    if (typingTimer) clearTimeout(typingTimer);
+    typingTimer = setTimeout(function () {
+      pushHistory();
+      refreshNav();
+    }, 500);
+  });
+
+  editor.addEventListener('mousedown', function (e) {
+    var t = e.target;
+    if (t && t.matches && t.matches('input[type=checkbox]')) {
+      e.preventDefault();
+      t.checked = !t.checked;
+      pushHistory();
+    }
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!e.target.closest || !e.target.closest('.drop')) {
+      tools.querySelectorAll('.menu').forEach(function (m) { m.hidden = true; });
+    }
+  });
+
+  renderTools();
+  load();
+})();
+</script>
+</body>
+</html>

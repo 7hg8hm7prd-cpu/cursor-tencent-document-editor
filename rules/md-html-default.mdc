@@ -1,0 +1,25 @@
+---
+description: MD/HTML 默认可视化预览；需要时再看源码
+alwaysApply: true
+---
+
+# MD / HTML 默认编辑路径
+
+## IDE（点文件）
+
+双击 `.md` / `.html` **默认打开可视化预览**（扩展 `tencentDocument.present`）。
+
+- 直接改内容，`Cmd/Ctrl+S` 写回磁盘。
+- **不要**默认用纯文本标签页交付给用户。
+- 需要改源码时：标题栏「编辑源码」，或 `Reopen Editor With…` → Text Editor。
+- 从源码回到预览：`Document Present: 打开可视化预览`，或再次用 present 打开。
+
+## Agent（对话）
+
+1. **默认先调用** MCP `document-editor` 的 `document_present(file_path=绝对路径, target=cursor)`。
+2. Agent 需要读内容做推理时，再用 `document_preview`。
+3. Agent 需要程序化整篇覆盖时，用 `document_edit`（不要手写绕过）。
+4. 用户明确说「只要改源码 / 不要开预览」时，才用纯文本编辑。
+5. Office（`.docx` / `.pptx` / `.xlsx`）仍走 `document_preview` + editor_sdk；PDF 只预览。
+
+触发词示例：打开这个 md、编辑 html、改一下文档、预览 markdown、可视化编辑。

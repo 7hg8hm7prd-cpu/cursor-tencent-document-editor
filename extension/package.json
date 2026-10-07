@@ -1,0 +1,95 @@
+{
+  "name": "tencent-document-present",
+  "displayName": "Tencent Document Present",
+  "description": "Open .md / .html in visual present by default; reopen with Text Editor for source.",
+  "version": "1.0.4",
+  "publisher": "tax-hermes",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCustomEditor:tencentDocument.present",
+    "onCommand:tencentDocument.openPresent",
+    "onCommand:tencentDocument.openSource"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "tencentDocument.present",
+        "displayName": "\u6587\u6863\u53ef\u89c6\u5316\u9884\u89c8",
+        "selector": [
+          {
+            "filenamePattern": "*.html"
+          },
+          {
+            "filenamePattern": "*.htm"
+          },
+          {
+            "filenamePattern": "*.md"
+          },
+          {
+            "filenamePattern": "*.markdown"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "tencentDocument.openPresent",
+        "title": "Document Present: \u6253\u5f00\u53ef\u89c6\u5316\u9884\u89c8",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "tencentDocument.openSource",
+        "title": "Document Present: \u7f16\u8f91\u6e90\u7801",
+        "icon": "$(code)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "tencentDocument.openSource",
+          "when": "activeCustomEditorId == tencentDocument.present",
+          "group": "navigation"
+        },
+        {
+          "command": "tencentDocument.openPresent",
+          "when": "resourceExtname =~ /\\.(md|markdown|html|htm)$/i && activeCustomEditorId != tencentDocument.present",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "tencentDocument.openPresent",
+          "when": "resourceExtname =~ /\\.(md|markdown|html|htm)$/i",
+          "group": "navigation"
+        },
+        {
+          "command": "tencentDocument.openSource",
+          "when": "resourceExtname =~ /\\.(md|markdown|html|htm)$/i",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Tencent Document Present",
+      "properties": {
+        "tencentDocument.previewPort": {
+          "type": "number",
+          "default": 39110,
+          "description": "Local present/edit HTTP port"
+        },
+        "tencentDocument.pluginRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to tencent-document-editor plugin root (auto-set by install-local.sh)"
+        }
+      }
+    }
+  }
+}
