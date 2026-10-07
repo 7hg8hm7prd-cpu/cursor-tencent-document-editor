@@ -664,30 +664,42 @@ def _sheet_id_default(file_id: str, explicit: str | None = None) -> str:
 def _apply_patch_op(fmt: str, file_id: str, op: dict) -> dict:
     name = str(op.get("op") or "").lower()
     if fmt == "docx":
+        if name in ("replace_range", "replace_text", "doc_replace_text"):
+            text = str(op.get("text") or op.get("replace") or op.get("new_text") or "")
+            ranges = op.get("ranges")
+            if not isinstance(ranges, list) or not ranges:
+                begin = op.get("begin")
+                end = op.get("end")
+                if begin is not None and end is not None:
+                    ranges = [{"begin": int(begin), "end": int(end)}]
+            if not isinstance(ranges, list) or not ranges:
+                raise SdkError("replace_range requires ranges or begin/end")
+            norm = []
+            for r in ranges:
+                if not isinstance(r, dict):
+                    continue
+                norm.append({"begin": int(r["begin"]), "end": int(r["end"])})
+            if not norm:
+                raise SdkError("replace_range requires valid ranges")
+            result = tool_call(
+                "doc_replace_text",
+                {"file_id": file_id, "ranges": norm, "text": text},
+                timeout=120,
+            )
+            return {"op": name, "ok": True, "result": result, "ranges": norm}
         if name in ("find_replace", "replace"):
-            find = str(op.get("find") or op.get("old") or "")
-            replace = str(op.get("replace") or op.get("new") or "")
+            find = str(op.get("find") or op.get("old") or op.get("old_text") or "")
+            replace = str(op.get("replace") or op.get("new") or op.get("new_text") or "")
             if not find:
                 raise SdkError("find_replace requires find")
             args = {
                 "file_id": file_id,
-                "find_text": find,
-                "replace_text": replace,
+                "old_text": find,
+                "new_text": replace,
             }
-            if op.get("replace_all") is not None:
-                args["replace_all"] = bool(op.get("replace_all"))
-            try:
-                result = tool_call("doc_find_and_replace", args, timeout=120)
-            except SdkError:
-                result = tool_call(
-                    "doc_replace_text",
-                    {
-                        "file_id": file_id,
-                        "old_text": find,
-                        "new_text": replace,
-                    },
-                    timeout=120,
-                )
+            if isinstance(op.get("scope"), dict):
+                args["scope"] = op["scope"]
+            result = tool_call("doc_find_and_replace", args, timeout=120)
             return {"op": name, "ok": True, "result": result}
         raise SdkError(f"unsupported docx op: {name}")
 
@@ -710,37 +722,41 @@ def _apply_patch_op(fmt: str, file_id: str, op: dict) -> dict:
             )
             return {"op": name, "ok": True, "sheet_id": sheet_id, "result": result}
         if name in ("find_replace", "replace"):
-            find = str(op.get("find") or op.get("old") or "")
-            replace = str(op.get("replace") or op.get("new") or "")
+            find = str(op.get("find") or op.get("old") or op.get("search_term") or "")
+            replace = str(op.get("replace") or op.get("new") or op.get("replace_text") or "")
             if not find:
                 raise SdkError("replace requires find")
-            result = tool_call(
-                "sheet_replace",
-                {
-                    "file_id": file_id,
-                    "sheet_id": sheet_id,
-                    "find_text": find,
-                    "replace_text": replace,
-                },
-                timeout=120,
-            )
+            args = {
+                "file_id": file_id,
+                "sheet_id": sheet_id,
+                "search_term": find,
+                "replace_text": replace,
+            }
+            if op.get("max_cells") is not None:
+                args["max_cells"] = int(op["max_cells"])
+            result = tool_call("sheet_replace", args, timeout=120)
             return {"op": name, "ok": True, "sheet_id": sheet_id, "result": result}
         raise SdkError(f"unsupported xlsx op: {name}")
 
     if fmt == "pptx":
         if name in ("find_replace", "replace"):
-            find = str(op.get("find") or op.get("old") or "")
+            find = str(op.get("find") or op.get("old") or op.get("search") or "")
             replace = str(op.get("replace") or op.get("new") or "")
             if not find:
                 raise SdkError("find_replace requires find")
-            args: dict[str, Any] = {
-                "file_id": file_id,
-                "find_text": find,
-                "replace_text": replace,
-            }
-            if op.get("page_index") is not None:
-                args["page_index"] = int(op["page_index"])
-            result = tool_call("slide_find_replace_text", args, timeout=120)
+            page_index = op.get("page_index")
+            if page_index is None:
+                page_index = 0
+            result = tool_call(
+                "slide_find_replace_text",
+                {
+                    "file_id": file_id,
+                    "page_index": int(page_index),
+                    "search": find,
+                    "replace": replace,
+                },
+                timeout=120,
+            )
             return {"op": name, "ok": True, "result": result}
         raise SdkError(f"unsupported pptx op: {name}")
 

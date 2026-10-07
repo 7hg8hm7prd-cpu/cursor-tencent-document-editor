@@ -58,13 +58,16 @@ def test_inline_edit_forwards():
     def fake_urlopen(req, timeout=None):
         captured["url"] = req.full_url
         captured["body"] = json.loads(req.data.decode("utf-8"))
+        captured["headers"] = {k.lower(): v for k, v in req.header_items()}
         return _FakeResp({"ok": True, "replacement": "新文本"})
 
     with patch.object(hermes_ai.urllib.request, "urlopen", side_effect=fake_urlopen):
         out = hermes_ai.inline_edit("旧", "改短一点")
     assert out["ok"] is True
     assert out["replacement"] == "新文本"
-    assert captured["url"].endswith("/api/md/inline-edit")
+    assert "/api/md/inline-edit" in captured["url"]
+    assert "session_id=" in captured["url"]
+    assert captured["headers"].get("x-hermes-loopback") == "1"
     assert captured["body"]["selection"] == "旧"
 
 

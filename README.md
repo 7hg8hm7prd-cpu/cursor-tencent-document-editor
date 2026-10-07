@@ -6,15 +6,17 @@
 |------|------|------|
 | Markdown (`.md`) | 默认可视化 present | WYSIWYG + MCP `document_edit` |
 | HTML (`.html`) | 默认可视化 present | WYSIWYG + MCP `document_edit` |
-| Word (`.docx`) | **editor_sdk UI**（`/static/doc/pc.html`） | UI 内编辑；MCP `document_patch` / `document_edit` |
-| PowerPoint (`.pptx`) | **editor_sdk UI** | UI 内编辑；`document_patch` |
-| Excel (`.xlsx`) | **editor_sdk UI** | UI 内编辑；`document_patch` |
+| Word (`.docx`) | **editor_sdk UI**（`/static/doc/pc.html`） | UI 内编辑；浮层蓝色 **Hermes AI**；MCP `document_patch` / `document_ai_rewrite` |
+| PowerPoint (`.pptx`) | **editor_sdk UI** | 同上 |
+| Excel (`.xlsx`) | **editor_sdk UI** | 同上 |
 | PDF (`.pdf`) | **editor_sdk UI**（只读） | 否 |
 
 MD/HTML 对齐 WorkBuddy `present_files`：
 
 - **IDE**：双击默认打开可视化预览（扩展 `tencentDocument.present`）。`Cmd/Ctrl+S` 写回磁盘。「编辑源码」切回文本编辑器。工具条含 **AI / 框选**（转发本机 Hermes）。
 - **Agent**：MCP 工具 `document_present`（默认端口 `39110`）；AI 用 `document_ai_rewrite`。
+
+Office AI：注入代理关闭 SDK 原生 `aiEdit`；浮层蓝色 Hermes「AI」就地改写写回。无顶栏 AI 面板。
 
 Office 需要本机 `editor_sdk`。AI 改写需要本机 Hermes WebUI（`HERMES_WEBUI_BASE`，默认 `http://127.0.0.1:8787`）。
 
@@ -79,6 +81,7 @@ python3 -m unittest discover -s tests -v
 - [docs/2026-10-07-present-ai-hermes-bridge.md](docs/2026-10-07-present-ai-hermes-bridge.md)
 - [docs/2026-10-07-office-inplace-patch.md](docs/2026-10-07-office-inplace-patch.md)
 - [docs/2026-10-07-office-sdk-visual-present.md](docs/2026-10-07-office-sdk-visual-present.md)
+- [docs/2026-10-07-office-ai-hermes-edit.md](docs/2026-10-07-office-ai-hermes-edit.md)
 
 ## License
 

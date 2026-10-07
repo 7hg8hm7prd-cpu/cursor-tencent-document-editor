@@ -2,7 +2,7 @@
   "name": "tencent-document-present",
   "displayName": "Tencent Document Present",
   "description": "Open md/html and Office (docx/pptx/xlsx/pdf) via Tencent editor_sdk / present UI by default.",
-  "version": "1.1.0",
+  "version": "1.4.3",
   "publisher": "tax-hermes",
   "engines": {
     "vscode": "^1.80.0"

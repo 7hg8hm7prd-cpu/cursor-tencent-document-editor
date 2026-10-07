@@ -107,6 +107,9 @@ def build_sdk_preview_url(
     }
     if doc_type == "doc":
         params["editorSdkUrl"] = f"http://127.0.0.1:{want_port}"
+    # No _wbchat / aiEdit — SDK native AI off; Hermes float_toolbar_ai.js only.
+    if doc_type != "pdf":
+        params["wb_source"] = "local"
     qs = urllib.parse.urlencode(params)
     return f"http://127.0.0.1:{want_port}/static/{doc_type}/pc.html?{qs}"
 

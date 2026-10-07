@@ -19,6 +19,8 @@ from typing import Any
 
 from bridge import _abs, _html_to_md, _md_to_html, detect_format
 from hermes_ai import ai_status, inline_edit, rewrite
+from office_ai import office_ai_rewrite
+from sdk_proxy import inject_js_bytes, proxy_sdk_request
 
 DEFAULT_PORT = int(os.environ.get("DOCUMENT_PREVIEW_PORT", "39110") or "39110")
 _PORT: int | None = None
@@ -68,6 +70,50 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/ai/status":
             st = ai_status()
             return self._json(200 if st.get("ok") else 503, st)
+        # WorkBuddy-style: HTML on present port, assets on editor_sdk (:39099)
+        if parsed.path == "/sdk-proxy/__hermes_mqq_inject.js":
+            return self._send(200, inject_js_bytes(), "application/javascript; charset=utf-8")
+        if parsed.path == "/office-frame":
+            doc_type = (qs.get("type") or ["doc"])[0]
+            if doc_type not in ("doc", "sheet", "slide", "pdf"):
+                return self._json(400, {"ok": False, "error": f"bad type: {doc_type}"})
+            # Forward all query params except type to SDK pc.html
+            pairs = []
+            for k, vals in qs.items():
+                if k == "type":
+                    continue
+                for v in vals:
+                    pairs.append((k, v))
+            q = urllib.parse.urlencode(pairs)
+            upstream = f"/static/{doc_type}/pc.html" + (f"?{q}" if q else "")
+            out = proxy_sdk_request(
+                "GET",
+                upstream,
+                headers={k: v for k, v in self.headers.items()},
+                prepare_html=True,
+            )
+            return self._send(
+                int(out.get("status") or 502),
+                out.get("body") or b"",
+                str(out.get("content_type") or "text/html; charset=utf-8"),
+            )
+        if parsed.path.startswith("/sdk-proxy/"):
+            # Legacy path: still prepare HTML with absolute SDK asset URLs
+            upstream = parsed.path[len("/sdk-proxy") :] or "/"
+            if parsed.query:
+                upstream = upstream + "?" + parsed.query
+            is_html = upstream.split("?", 1)[0].endswith(".html")
+            out = proxy_sdk_request(
+                "GET",
+                upstream,
+                headers={k: v for k, v in self.headers.items()},
+                prepare_html=is_html,
+            )
+            return self._send(
+                int(out.get("status") or 502),
+                out.get("body") or b"",
+                str(out.get("content_type") or "application/octet-stream"),
+            )
         if parsed.path in ("/", "/edit"):
             self._send(200, _load_editor_html(), "text/html; charset=utf-8")
             return
@@ -190,6 +236,24 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/upload":
             return self._handle_upload()
+        # Proxy SDK MCP / other POSTs (guest may call via rewritten paths)
+        if parsed.path.startswith("/sdk-proxy/"):
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length) if length else b""
+            upstream = parsed.path[len("/sdk-proxy") :] or "/"
+            if parsed.query:
+                upstream = upstream + "?" + parsed.query
+            out = proxy_sdk_request(
+                "POST",
+                upstream,
+                body=raw,
+                headers={k: v for k, v in self.headers.items()},
+            )
+            return self._send(
+                int(out.get("status") or 502),
+                out.get("body") or b"",
+                str(out.get("content_type") or "application/octet-stream"),
+            )
         length = int(self.headers.get("Content-Length") or 0)
         raw = self.rfile.read(length) if length else b"{}"
         try:
@@ -242,6 +306,27 @@ class Handler(BaseHTTPRequestHandler):
                 format=str(body.get("format") or "md"),
                 model=body.get("model"),
                 session_id=body.get("session_id"),
+            )
+            return self._json(200 if out.get("ok") is not False else 502, out)
+
+        if parsed.path == "/api/ai/office-apply":
+            apply = body.get("apply")
+            if apply is None:
+                apply = True
+            repl = body.get("replacement")
+            ranges = body.get("ranges")
+            if not isinstance(ranges, list):
+                ranges = None
+            out = office_ai_rewrite(
+                str(body.get("file_path") or ""),
+                str(body.get("selection") or ""),
+                str(body.get("instruction") or ""),
+                apply=bool(apply),
+                model=body.get("model"),
+                format=body.get("format"),
+                replacement=str(repl) if repl is not None else None,
+                ranges=ranges,
+                file_id=body.get("file_id"),
             )
             return self._json(200 if out.get("ok") is not False else 502, out)
 

@@ -29,6 +29,8 @@ def test_build_sdk_preview_url_docx(tmp_path):
     assert "localFilePath=" in url
     assert "local_edit=1" in url
     assert "editorSdkUrl=" in url
+    assert "_wbchat" not in url
+    assert "wb_source=local" in url
     pad = hashlib.md5(str(p.resolve()).encode("utf-8")).hexdigest()
     assert f"globalPadId={pad}" in url
 

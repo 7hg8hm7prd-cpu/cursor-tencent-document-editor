@@ -27,7 +27,7 @@ from bridge import (  # noqa: E402
 from hermes_ai import document_ai_rewrite  # noqa: E402
 
 SERVER_NAME = "tencent-document-editor"
-SERVER_VERSION = "1.5.1"
+SERVER_VERSION = "1.6.0"
 
 TOOLS = [
     {
@@ -160,8 +160,10 @@ TOOLS = [
         "name": "document_ai_rewrite",
         "description": (
             "AI rewrite via local Hermes WebUI (HERMES_WEBUI_BASE). "
-            "Provide selection (inline-edit) or parts (canvas rewrite). "
-            "Requires Hermes running on this machine."
+            "md/html: selection or parts rewrite (returns text). "
+            "Office (docx/xlsx/pptx): selection + file_path → Hermes rewrite then "
+            "editor_sdk find/replace write-back (WorkBuddy-style). "
+            "Requires Hermes; Office also needs editor_sdk."
         ),
         "inputSchema": {
             "type": "object",
@@ -175,13 +177,26 @@ TOOLS = [
                 },
                 "format": {
                     "type": "string",
-                    "enum": ["md", "html"],
-                    "description": "Content format for parts rewrite (default md)",
+                    "enum": ["md", "html", "docx", "xlsx", "pptx"],
+                    "description": "Content format (default md)",
                 },
                 "model": {"type": "string"},
                 "file_path": {
                     "type": "string",
-                    "description": "Optional path for logging / validation only",
+                    "description": "Office path to apply rewrite; optional for md/html",
+                },
+                "apply": {
+                    "type": "boolean",
+                    "description": "Office only: write back via SDK (default true)",
+                },
+                "replacement": {
+                    "type": "string",
+                    "description": "Office only: reuse previewed text (skip second Hermes call)",
+                },
+                "ranges": {
+                    "type": "array",
+                    "description": "Office Word: UTF-16 ranges [{begin,end}] from SDK selection",
+                    "items": {"type": "object"},
                 },
             },
             "required": ["instruction"],
@@ -283,6 +298,9 @@ def call_tool(name: str, arguments: dict | None) -> dict:
                     format=str(args.get("format") or "md"),
                     model=args.get("model"),
                     file_path=args.get("file_path"),
+                    apply=args.get("apply"),
+                    replacement=args.get("replacement"),
+                    ranges=args.get("ranges"),
                 )
             )
         if name == "document_convert":

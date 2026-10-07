@@ -1,8 +1,8 @@
 {
   "name": "tencent-document-editor",
   "displayName": "Tencent Document Editor",
-  "version": "1.5.1",
-  "description": "MD/HTML open as visual present by default in Cursor; Tencent editor_sdk for Word/PPT/Excel/PDF.",
+  "version": "1.8.3",
+  "description": "MD/HTML present + Office editor_sdk UI; Hermes float AI (SDK native / top-bar AI off).",
   "author": {
     "name": "7hg8hm7prd-cpu",
     "email": "dev@local"

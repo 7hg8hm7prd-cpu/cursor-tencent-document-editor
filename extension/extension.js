@@ -72,8 +72,12 @@ function isOfficePath(fsPath) {
   return Boolean(OFFICE_EXT[path.extname(fsPath).toLowerCase()]);
 }
 
-/** WorkBuddy-compatible editor_sdk visual URL. */
-function buildSdkPreviewUrl(fsPath, sdkPort) {
+/**
+ * WorkBuddy URL_CONFIG_MAP — local edit only (never -td_proxy / online clients).
+ * Iframe MUST hit editor_sdk origin directly (same as WorkBuddy present_files).
+ * Do not host the SPA on :39110 — that becomes a broken "online-ish" host and white-screens.
+ */
+function buildSdkPreviewUrl(fsPath, sdkPort, _previewPort) {
   const ext = path.extname(fsPath).toLowerCase();
   const type = OFFICE_EXT[ext];
   if (!type) return "";
@@ -84,13 +88,22 @@ function buildSdkPreviewUrl(fsPath, sdkPort) {
     localFilePath: fsPath,
     globalPadId,
   });
+  // Align with @tencent/tencent-docs-ai-engine URL_CONFIG_MAP (local only).
   if (type === "doc") {
     params.set("local_edit", "1");
     params.set("client", "sdk_local");
-    params.set("mode", mode === "readonly" ? "readonly" : "edit");
-    params.set("toolbar", mode === "readonly" ? "hide" : "show");
-    params.set("outline", "show");
-    params.set("statusbar", mode === "readonly" ? "hide" : "show");
+    if (mode === "readonly") {
+      params.set("mode", "readonly");
+      params.set("toolbar", "hide");
+      params.set("outline", "show");
+      params.set("statusbar", "hide");
+    } else {
+      params.set("mode", "edit");
+      params.set("toolbar", "show");
+      params.set("outline", "show");
+      params.set("statusbar", "show");
+    }
+    // Only doc gets editorSdkUrl in WorkBuddy buildPreviewUrl
     params.set("editorSdkUrl", `http://127.0.0.1:${sdkPort}`);
   } else if (type === "sheet") {
     params.set("local_edit", "1");
@@ -98,9 +111,15 @@ function buildSdkPreviewUrl(fsPath, sdkPort) {
     params.set("mode", mode === "readonly" ? "readonly" : "edit");
   } else if (type === "slide") {
     params.set("local_edit", "1");
-    params.set("client", mode === "readonly" ? "sdk_local_preview" : "sdk_local_wb");
     params.set("hideTitlebar", "1");
+    params.set("client", mode === "readonly" ? "sdk_local_preview" : "sdk_local_wb");
   }
+  // Do not set _wbchat / aiEdit — SDK native float AI is disabled.
+  // Hermes blue「AI」comes from float_toolbar_ai.js inject only.
+  if (type !== "pdf") {
+    params.set("wb_source", "local");
+  }
+  // pdf: empty extra params (WorkBuddy)
   return `http://127.0.0.1:${sdkPort}/static/${type}/pc.html?${params.toString()}`;
 }
 
@@ -160,46 +179,74 @@ async function ensureDaemon(pluginRoot, port) {
   return false;
 }
 
-/** Start editor_sdk via ensure_sdk.py if /health is down. */
+/**
+ * WorkBuddy parity: bare editor_sdk upstream + inject proxy on sdkPort.
+ * Proxy injects mqq + __WB_DOCS_FEATURE_LIST__ (Electron preload substitute)
+ * and tunnels WebSocket. Opt out: HERMES_SDK_DIRECT=1.
+ */
 async function ensureSdk(pluginRoot, sdkPort) {
-  if (await portOpen(sdkPort)) return true;
   if (!pluginRoot) {
     vscode.window.showErrorMessage(
       "Document Present: 未找到插件目录，无法启动 editor_sdk。"
     );
     return false;
   }
-  const ensurePy = path.join(pluginRoot, "mcp-server", "ensure_sdk.py");
-  if (!fs.existsSync(ensurePy)) {
-    vscode.window.showErrorMessage(`Document Present: 缺少 ${ensurePy}`);
+  const bootPy = path.join(pluginRoot, "mcp-server", "boot_sdk_inject.py");
+  if (!fs.existsSync(bootPy)) {
+    vscode.window.showErrorMessage(`Document Present: 缺少 ${bootPy}`);
     return false;
   }
+  const upstream = Number(process.env.EDITOR_SDK_UPSTREAM_PORT || 39101);
+  let sdkBin = String(process.env.EDITOR_SDK_BIN || "").trim();
+  if (!sdkBin) {
+    const pin = path.join(pluginRoot, ".editor-sdk-bin");
+    try {
+      if (fs.existsSync(pin)) sdkBin = fs.readFileSync(pin, "utf8").trim();
+    } catch (_) {
+      /* ignore */
+    }
+  }
+  if (!sdkBin) {
+    const cand = path.join(
+      process.env.HOME || "",
+      "tax-hermes/third_party/tencent-editor-sdk/darwin-arm64/editor_sdk"
+    );
+    if (fs.existsSync(cand)) sdkBin = cand;
+  }
+  const forceDirect = String(process.env.HERMES_SDK_DIRECT || "").trim() === "1";
   await new Promise((resolve) => {
-    const child = spawn("python3", [ensurePy], {
+    const child = spawn("python3", [bootPy], {
       env: {
         ...process.env,
         EDITOR_SDK_PORT: String(sdkPort),
+        EDITOR_SDK_UPSTREAM_PORT: String(upstream),
         DOCUMENT_EDITOR_PLUGIN_ROOT: pluginRoot,
+        EDITOR_SDK_CORS_ORIGIN: "*",
+        HERMES_SDK_DIRECT: forceDirect ? "1" : "0",
+        ...(sdkBin ? { EDITOR_SDK_BIN: sdkBin } : {}),
       },
       stdio: ["ignore", "ignore", "ignore"],
     });
     child.on("exit", () => resolve());
     child.on("error", () => resolve());
-    setTimeout(() => resolve(), 12000);
+    setTimeout(() => resolve(), 55000);
   });
-  if (await portOpen(sdkPort)) return true;
+  const ok = await portOpen(sdkPort);
+  if (ok) return true;
   vscode.window.showErrorMessage(
-    "Document Present: editor_sdk 未就绪。请设置 EDITOR_SDK_BIN 或运行 bash scripts/fetch-sdk.sh"
+    "Document Present: editor_sdk 未就绪。请设置 EDITOR_SDK_BIN 或查看 /tmp/editor_sdk_logs/"
   );
   return false;
 }
 
-function buildOfficeEmbedHtml(sdkUrl) {
+function buildOfficeEmbedHtml(sdkUrl, fsPath, previewPort) {
   const csp = [
     "default-src 'none'",
     "frame-src http://127.0.0.1:* http://localhost:*",
+    "child-src http://127.0.0.1:* http://localhost:*",
     "style-src 'unsafe-inline'",
     "script-src 'unsafe-inline'",
+    "connect-src http://127.0.0.1:* http://localhost:*",
   ].join("; ");
   return `<!DOCTYPE html>
 <html>
@@ -207,22 +254,180 @@ function buildOfficeEmbedHtml(sdkUrl) {
 <meta charset="utf-8"/>
 <meta http-equiv="Content-Security-Policy" content="${csp}"/>
 <style>
-  html,body{margin:0;height:100%;background:#f5f6f7}
+  html,body{margin:0;height:100%;background:#f5f6f7;font:12px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#1f2329}
+  .wrap{display:flex;flex-direction:column;height:100%}
+  .top{flex:0 0 auto;background:#fff;border-bottom:1px solid #e5e6eb;padding:8px 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .top a{font:inherit;border:1px solid #d0d3d9;background:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;color:#1f2329;text-decoration:none}
+  .chip{max-width:min(420px,55vw);padding:3px 8px;border-radius:999px;background:#e8f1ff;border:1px solid #9dc0ff;color:#0b57d0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none}
+  .chip.show{display:inline-block}
+  .chip.empty{background:#f0f2f5;border-color:#d0d3d9;color:#8a8f98}
+  .status{color:#646a73;flex:1 1 160px;min-width:120px}
+  .frame{flex:1 1 auto;min-height:0}
   iframe{border:0;width:100%;height:100%;display:block}
-  .bar{position:absolute;top:8px;right:12px;z-index:2;font:12px/1.4 -apple-system,sans-serif}
-  .bar a{color:#1a6cff}
 </style>
 </head>
 <body>
-  <div class="bar"><a href="${sdkUrl}" id="ext">在浏览器打开</a></div>
-  <iframe src="${sdkUrl}" title="Tencent editor_sdk" allow="clipboard-read; clipboard-write"></iframe>
-  <script>
-    const vscode = acquireVsCodeApi();
-    document.getElementById('ext').addEventListener('click', (e) => {
-      e.preventDefault();
-      vscode.postMessage({ type: 'openExternal', url: ${JSON.stringify(sdkUrl)} });
-    });
-  </script>
+<div class="wrap">
+  <div class="top">
+    <strong>Office</strong>
+    <span class="chip empty" id="selChip" title="选区">未划选</span>
+    <a href="#" id="ext">浏览器打开</a>
+    <span class="status" id="status">正在加载本地编辑器…</span>
+  </div>
+  <div class="frame">
+    <iframe id="sdkFrame" src="${sdkUrl}" title="Tencent editor_sdk" allow="clipboard-read; clipboard-write"></iframe>
+  </div>
+</div>
+<script>
+(function () {
+  const vscode = acquireVsCodeApi();
+  const filePath = ${JSON.stringify(fsPath)};
+  const previewPort = ${JSON.stringify(previewPort)};
+  const sdkUrl = ${JSON.stringify(sdkUrl)};
+  let replacement = '';
+  let liveSelection = '';
+  let liveInstruction = '';
+  let liveRanges = null;
+  let liveFileId = '';
+  let mqqReady = false;
+
+  const status = document.getElementById('status');
+  const selChip = document.getElementById('selChip');
+  const sdkFrame = document.getElementById('sdkFrame');
+  let loadTimer = setTimeout(function () {
+    status.textContent = '编辑器加载较慢。请确认 URL 含 local_edit=1&client=sdk_local，或点「浏览器打开」。';
+  }, 15000);
+  sdkFrame.addEventListener('load', function () {
+    clearTimeout(loadTimer);
+    status.textContent = '已载入。划选文字 → 浮层蓝色「AI」改写';
+    selChip.classList.add('show');
+  });
+
+  function chipLabel(text) {
+    const t = String(text || '').replace(/\\s+/g, ' ').trim();
+    if (!t) return '未划选';
+    return t.length > 48 ? t.slice(0, 48) + '…' : t;
+  }
+
+  function setSelectionFromPayload(payload) {
+    if (!payload || typeof payload !== 'object') {
+      liveRanges = null;
+      liveFileId = '';
+      liveSelection = '';
+      selChip.textContent = '未划选';
+      selChip.className = 'chip empty show';
+      return;
+    }
+    const text = payload.description || payload.selectedText || payload.text || '';
+    const ranges = Array.isArray(payload.ranges) ? payload.ranges : null;
+    liveRanges = ranges;
+    liveFileId = payload.fileId || payload.file_id || '';
+    liveSelection = text || '';
+    if (payload.aiPrompt) liveInstruction = String(payload.aiPrompt);
+    selChip.textContent = chipLabel(text || (ranges ? '选区(坐标)' : '未划选'));
+    selChip.className = text || ranges ? 'chip show' : 'chip empty show';
+  }
+
+  document.getElementById('ext').addEventListener('click', (e) => {
+    e.preventDefault();
+    vscode.postMessage({ type: 'openExternal', url: sdkUrl });
+  });
+
+  function callOfficeAi(apply) {
+    const selection = (liveSelection || '').trim();
+    const instruction = (liveInstruction || '').trim();
+    if (!selection && !(liveRanges && liveRanges.length)) {
+      status.textContent = '请先在文档中划选文字';
+      return;
+    }
+    if (apply) {
+      if (!replacement) {
+        status.textContent = '请先在浮层完成改写预览';
+        return;
+      }
+    } else if (!instruction) {
+      status.textContent = '请填写改写指令';
+      return;
+    }
+    status.textContent = apply ? '正在写入选区…' : '浮层 AI 改写中…';
+    const msg = {
+      type: 'officeAi',
+      apply: !!apply,
+      filePath: filePath,
+      previewPort: previewPort,
+      selection: selection,
+      instruction: instruction
+    };
+    if (liveRanges && liveRanges.length) msg.ranges = liveRanges;
+    if (liveFileId) msg.fileId = liveFileId;
+    if (apply && replacement) msg.replacement = replacement;
+    vscode.postMessage(msg);
+  }
+
+  window.addEventListener('message', (ev) => {
+    const msg = ev.data;
+    if (!msg) return;
+    if (msg.source === 'hermes-tencent-doc-mqq') {
+      if (msg.type === 'mqqReady') {
+        mqqReady = true;
+        status.textContent = '选区桥就绪：划选后点浮层蓝色「AI」';
+        selChip.classList.add('show');
+        return;
+      }
+      if (msg.type === 'selectionChange') {
+        setSelectionFromPayload(msg.payload);
+        return;
+      }
+      if (msg.type === 'floatAiApply') {
+        setSelectionFromPayload(msg.payload || {});
+        replacement = msg.replacement || '';
+        if (!replacement) {
+          status.textContent = '浮层写入失败：无预览文本';
+          return;
+        }
+        callOfficeAi(true);
+        return;
+      }
+      if (msg.type === 'selectionSend' || msg.type === 'aiToolbar') {
+        var sendPayload = msg.payload || {};
+        if (sendPayload && sendPayload.payload && typeof sendPayload.payload === 'object' && !(sendPayload.description || sendPayload.selectedText || sendPayload.text)) {
+          sendPayload = sendPayload.payload;
+        }
+        if (msg.error === 'empty_selection') {
+          status.textContent = '选区未捕获：请重新划选后点蓝色 AI';
+          return;
+        }
+        setSelectionFromPayload(sendPayload);
+        if (!(liveInstruction || '').trim()) {
+          liveInstruction = '润色这段文字，保持原意';
+        }
+        // Float panel owns UI; only run Hermes here
+        callOfficeAi(false);
+        return;
+      }
+    }
+    if (msg.type !== 'officeAiResult') return;
+    try {
+      if (sdkFrame && sdkFrame.contentWindow) {
+        sdkFrame.contentWindow.postMessage(Object.assign({
+          source: 'hermes-tencent-doc-parent'
+        }, msg), '*');
+      }
+    } catch (e) {}
+    if (msg.ok === false) {
+      status.textContent = msg.error || '失败';
+      return;
+    }
+    if (msg.applied) {
+      status.textContent = '已写入选区（' + (msg.writeMode || 'sdk') + '）';
+      replacement = '';
+      return;
+    }
+    replacement = msg.replacement || '';
+    status.textContent = replacement ? '浮层预览就绪' : '无改写结果';
+  });
+})();
+</script>
 </body>
 </html>`;
 }
@@ -334,13 +539,16 @@ class PresentEditorProvider {
       localResourceRoots: [],
     };
 
-    // Office / PDF → embed Tencent editor_sdk visual UI
+    // Office / PDF → embed Tencent editor_sdk visual UI + Hermes AI bar
     if (isOfficePath(fsPath)) {
       const sdkPort = getSdkPort();
+      const previewPort = getPort();
       const sdkOk = await ensureSdk(pluginRoot, sdkPort);
-      const sdkUrl = buildSdkPreviewUrl(fsPath, sdkPort);
+      // preview daemon hosts /api/ai/office-apply
+      await ensureDaemon(pluginRoot, previewPort);
+      const sdkUrl = buildSdkPreviewUrl(fsPath, sdkPort, previewPort);
       if (sdkOk && sdkUrl) {
-        webviewPanel.webview.html = buildOfficeEmbedHtml(sdkUrl);
+        webviewPanel.webview.html = buildOfficeEmbedHtml(sdkUrl, fsPath, previewPort);
       } else {
         webviewPanel.webview.html = `<!DOCTYPE html><html><body style="font:13px/1.5 -apple-system,sans-serif;padding:16px">
           <p>editor_sdk 未就绪，无法打开 Office 可视化编辑。</p>
@@ -351,6 +559,39 @@ class PresentEditorProvider {
         if (!msg || !msg.type) return;
         if (msg.type === "openExternal" && msg.url) {
           await vscode.env.openExternal(vscode.Uri.parse(String(msg.url)));
+          return;
+        }
+        if (msg.type === "officeAi") {
+          try {
+            const port = Number(msg.previewPort) || getPort();
+            const payload = {
+              file_path: msg.filePath || fsPath,
+              selection: msg.selection || "",
+              instruction: msg.instruction || "",
+              apply: !!msg.apply,
+            };
+            if (msg.replacement) payload.replacement = msg.replacement;
+            if (Array.isArray(msg.ranges) && msg.ranges.length) payload.ranges = msg.ranges;
+            if (msg.fileId) payload.file_id = msg.fileId;
+            const body = JSON.stringify(payload);
+            const data = await httpJson(port, "POST", "/api/ai/office-apply", body, {
+              "Content-Type": "application/json",
+            });
+            webviewPanel.webview.postMessage({
+              type: "officeAiResult",
+              ok: data && data.ok !== false,
+              error: data && data.error,
+              replacement: data && data.replacement,
+              applied: data && data.applied,
+              writeMode: data && data.write_mode,
+            });
+          } catch (e) {
+            webviewPanel.webview.postMessage({
+              type: "officeAiResult",
+              ok: false,
+              error: String((e && e.message) || e),
+            });
+          }
         }
       });
       return;

@@ -41,10 +41,14 @@ def resolve_sdk_bin() -> Path | None:
         if p.is_file():
             return p.resolve()
 
+    home = Path.home()
     candidates = [
         PLUGIN_ROOT / ".." / "third_party" / "tencent-editor-sdk" / _platform_bin_name(),
         PLUGIN_ROOT.parent / "third_party" / "tencent-editor-sdk" / _platform_bin_name(),
         Path.cwd() / "third_party" / "tencent-editor-sdk" / _platform_bin_name(),
+        # tax-hermes checkout (standalone plugin often lives beside or under it)
+        home / "tax-hermes" / "third_party" / "tencent-editor-sdk" / _platform_bin_name(),
+        Path("/Users/henry/tax-hermes/third_party/tencent-editor-sdk") / _platform_bin_name(),
     ]
     for c in candidates:
         try:
@@ -76,18 +80,28 @@ def ensure_sdk(wait_s: float = 8.0) -> dict:
 
     # Allow Cursor/Simple Browser iframes to load editor assets from 127.0.0.1
     cors = (os.environ.get("EDITOR_SDK_CORS_ORIGIN") or "*").strip() or "*"
+    # WorkBuddy default: do NOT pass -td_proxy (that is the online/docs.qq.com path).
+    # Local open uses client=sdk_local + local_edit=1 + localFilePath only.
+    enable_td = (os.environ.get("EDITOR_SDK_TD_PROXY") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
     out_log = log_dir / "editor_sdk.stdout.log"
     try:
         with open(out_log, "ab") as logf:
+            args = [
+                str(bin_path),
+                f"--port={port}",
+                f"--log_dir={log_dir}",
+                f"--tmp_dir={tmp_dir}",
+                f"--cors_origin={cors}",
+            ]
+            if enable_td:
+                args.append("-td_proxy=true")
             subprocess.Popen(
-                [
-                    str(bin_path),
-                    f"--port={port}",
-                    f"--log_dir={log_dir}",
-                    f"--tmp_dir={tmp_dir}",
-                    f"--cors_origin={cors}",
-                ],
+                args,
                 stdout=logf,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
