@@ -26,14 +26,15 @@ document_present(file_path="/abs/path/notes.md", target="cursor")
 ## Instructions
 
 1. Prefer MCP tools from the `document-editor` server.
-2. **md/html view-edit** → `document_present` first.
-3. **Agent-side read** → `document_preview`.
+2. **可视化打开（含 Office）** → `document_present` first（docx/xlsx/pptx/pdf 走 editor_sdk UI）。
+3. **Agent-side 只要文本/结构** → `document_preview`（无头 open_file，不展示 UI）。
 4. **Programmatic full rewrite** → `document_edit(mode=rewrite)`（默认）。
 5. **Office 就地小改** → `document_patch`（find/replace、set_csv）。
-6. **AI 改写**（选区/块）→ Present 工具条 `AI`，或 MCP `document_ai_rewrite`。需本机 Hermes（`HERMES_WEBUI_BASE`，默认 `http://127.0.0.1:8787`）。
-7. Call `document_sdk_status` if office tools fail.
-8. PDF is view-only.
-9. Pass absolute paths.
+6. **AI 改写**（md/html 选区）→ Present 工具条 `AI`，或 MCP `document_ai_rewrite`。需本机 Hermes。
+7. Call `document_sdk_status` if office tools fail。
+8. PDF 可视化只读。
+9. Pass absolute paths。
+10. ⚠️ `open_file` / `document_preview` **不会**给用户看界面；要展示必须 `document_present`。
 
 ## Tools
 

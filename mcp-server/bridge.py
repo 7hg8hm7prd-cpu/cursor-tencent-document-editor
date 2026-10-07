@@ -901,7 +901,11 @@ def document_present(
     open_browser: bool = True,
     target: str | None = None,
 ) -> dict:
-    """WorkBuddy present_files analogue for md/html WYSIWYG."""
+    """WorkBuddy present_files analogue.
+
+    - md/html → local present_ui (port 39110)
+    - docx/pptx/xlsx/pdf → editor_sdk /static/{type}/pc.html (visual editor)
+    """
     from preview_server import present_url
 
     return present_url(file_path, open_browser=open_browser, target=target)

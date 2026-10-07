@@ -1,8 +1,8 @@
 {
   "name": "tencent-document-present",
   "displayName": "Tencent Document Present",
-  "description": "Open .md / .html in visual present by default; reopen with Text Editor for source.",
-  "version": "1.0.5",
+  "description": "Open md/html and Office (docx/pptx/xlsx/pdf) via Tencent editor_sdk / present UI by default.",
+  "version": "1.1.0",
   "publisher": "tax-hermes",
   "engines": {
     "vscode": "^1.80.0"
@@ -20,20 +20,20 @@
     "customEditors": [
       {
         "viewType": "tencentDocument.present",
-        "displayName": "\u6587\u6863\u53ef\u89c6\u5316\u9884\u89c8",
+        "displayName": "文档可视化预览",
         "selector": [
-          {
-            "filenamePattern": "*.html"
-          },
-          {
-            "filenamePattern": "*.htm"
-          },
-          {
-            "filenamePattern": "*.md"
-          },
-          {
-            "filenamePattern": "*.markdown"
-          }
+          { "filenamePattern": "*.html" },
+          { "filenamePattern": "*.htm" },
+          { "filenamePattern": "*.md" },
+          { "filenamePattern": "*.markdown" },
+          { "filenamePattern": "*.docx" },
+          { "filenamePattern": "*.doc" },
+          { "filenamePattern": "*.xlsx" },
+          { "filenamePattern": "*.xls" },
+          { "filenamePattern": "*.csv" },
+          { "filenamePattern": "*.pptx" },
+          { "filenamePattern": "*.ppt" },
+          { "filenamePattern": "*.pdf" }
         ],
         "priority": "default"
       }
@@ -41,12 +41,12 @@
     "commands": [
       {
         "command": "tencentDocument.openPresent",
-        "title": "Document Present: \u6253\u5f00\u53ef\u89c6\u5316\u9884\u89c8",
+        "title": "Document Present: 打开可视化预览",
         "icon": "$(preview)"
       },
       {
         "command": "tencentDocument.openSource",
-        "title": "Document Present: \u7f16\u8f91\u6e90\u7801",
+        "title": "Document Present: 编辑源码",
         "icon": "$(code)"
       }
     ],
@@ -54,19 +54,19 @@
       "editor/title": [
         {
           "command": "tencentDocument.openSource",
-          "when": "activeCustomEditorId == tencentDocument.present",
+          "when": "activeCustomEditorId == tencentDocument.present && resourceExtname =~ /\\.(md|markdown|html|htm)$/i",
           "group": "navigation"
         },
         {
           "command": "tencentDocument.openPresent",
-          "when": "resourceExtname =~ /\\.(md|markdown|html|htm)$/i && activeCustomEditorId != tencentDocument.present",
+          "when": "resourceExtname =~ /\\.(md|markdown|html|htm|docx|doc|xlsx|xls|csv|pptx|ppt|pdf)$/i && activeCustomEditorId != tencentDocument.present",
           "group": "navigation"
         }
       ],
       "explorer/context": [
         {
           "command": "tencentDocument.openPresent",
-          "when": "resourceExtname =~ /\\.(md|markdown|html|htm)$/i",
+          "when": "resourceExtname =~ /\\.(md|markdown|html|htm|docx|doc|xlsx|xls|csv|pptx|ppt|pdf)$/i",
           "group": "navigation"
         },
         {
@@ -82,7 +82,12 @@
         "tencentDocument.previewPort": {
           "type": "number",
           "default": 39110,
-          "description": "Local present/edit HTTP port"
+          "description": "Local md/html present HTTP port"
+        },
+        "tencentDocument.sdkPort": {
+          "type": "number",
+          "default": 39099,
+          "description": "Local Tencent editor_sdk port (Office visual editor)"
         },
         "tencentDocument.pluginRoot": {
           "type": "string",

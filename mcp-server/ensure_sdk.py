@@ -74,6 +74,9 @@ def ensure_sdk(wait_s: float = 8.0) -> dict:
     log_dir.mkdir(parents=True, exist_ok=True)
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
+    # Allow Cursor/Simple Browser iframes to load editor assets from 127.0.0.1
+    cors = (os.environ.get("EDITOR_SDK_CORS_ORIGIN") or "*").strip() or "*"
+
     out_log = log_dir / "editor_sdk.stdout.log"
     try:
         with open(out_log, "ab") as logf:
@@ -83,6 +86,7 @@ def ensure_sdk(wait_s: float = 8.0) -> dict:
                     f"--port={port}",
                     f"--log_dir={log_dir}",
                     f"--tmp_dir={tmp_dir}",
+                    f"--cors_origin={cors}",
                 ],
                 stdout=logf,
                 stderr=subprocess.STDOUT,

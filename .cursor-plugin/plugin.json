@@ -1,7 +1,7 @@
 {
   "name": "tencent-document-editor",
   "displayName": "Tencent Document Editor",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "MD/HTML open as visual present by default in Cursor; Tencent editor_sdk for Word/PPT/Excel/PDF.",
   "author": {
     "name": "7hg8hm7prd-cpu",

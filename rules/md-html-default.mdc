@@ -22,6 +22,6 @@ alwaysApply: true
 4. Office 就地小改用 `document_patch`（find/replace、set_csv）。
 5. AI 选区改写：Present 工具条 `AI`，或 MCP `document_ai_rewrite`（需本机 Hermes，`HERMES_WEBUI_BASE`）。
 6. 用户明确说「只要改源码 / 不要开预览」时，才用纯文本编辑。
-7. Office 预览仍走 `document_preview` + editor_sdk；PDF 只预览。
+7. Office / PDF 可视化也用 `document_present`（内嵌 editor_sdk `/static/*/pc.html`）。Agent 只要文本结构时再用 `document_preview`。
 
-触发词示例：打开这个 md、编辑 html、改一下文档、预览 markdown、可视化编辑、AI 改写。
+触发词示例：打开这个 md、编辑 html、打开 docx、预览 pptx、可视化编辑、AI 改写。

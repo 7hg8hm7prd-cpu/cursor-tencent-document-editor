@@ -27,23 +27,23 @@ from bridge import (  # noqa: E402
 from hermes_ai import document_ai_rewrite  # noqa: E402
 
 SERVER_NAME = "tencent-document-editor"
-SERVER_VERSION = "1.5.0"
+SERVER_VERSION = "1.5.1"
 
 TOOLS = [
     {
         "name": "document_present",
         "description": (
-            "WorkBuddy-style present: open a local WYSIWYG editor for .md / .html "
-            "in the browser (visual edit + save back to disk). "
-            "Prefer this as the DEFAULT when the user wants to view/edit Markdown or HTML. "
-            "Office files (docx/pptx/xlsx) should use document_preview + editor_sdk instead."
+            "WorkBuddy-style present: open a visual editor. "
+            "md/html → local present UI; "
+            "docx/pptx/xlsx/pdf → Tencent editor_sdk /static/*/pc.html (real Office UI). "
+            "Prefer this as the DEFAULT when the user wants to view/edit a document."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "file_path": {
                     "type": "string",
-                    "description": "Absolute path to .md or .html file",
+                    "description": "Absolute path to .md/.html/.docx/.pptx/.xlsx/.pdf",
                 },
                 "open_browser": {
                     "type": "boolean",
@@ -61,9 +61,9 @@ TOOLS = [
     {
         "name": "document_preview",
         "description": (
-            "Preview a local document (md/html/docx/pptx/xlsx/pdf). "
-            "Returns readable text content and metadata. PDF is view-only. "
-            "For interactive md/html editing prefer document_present."
+            "Text/structure preview (headless). "
+            "Office uses editor_sdk open_file under the hood but does NOT show UI. "
+            "For visual editing prefer document_present (SDK /static/*/pc.html)."
         ),
         "inputSchema": {
             "type": "object",

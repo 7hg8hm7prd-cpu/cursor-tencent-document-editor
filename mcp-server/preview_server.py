@@ -333,11 +333,21 @@ def present_url(
     if not path.is_file():
         return {"ok": False, "error": f"file not found: {path}"}
     fmt = detect_format(path)
+    # Office / PDF → editor_sdk visual static editor (WorkBuddy present_files)
+    if fmt in ("docx", "pptx", "xlsx", "pdf"):
+        from sdk_preview import present_office
+
+        mode = "readonly" if fmt == "pdf" else "edit"
+        return present_office(
+            str(path),
+            open_browser=open_browser,
+            target=target,
+            mode=mode,
+        )
     if fmt not in ("md", "html"):
         return {
             "ok": False,
-            "error": f"document_present WYSIWYG is for md/html only (got {fmt}). "
-            "For office use document_preview / editor_sdk open_file.",
+            "error": f"document_present unsupported format: {fmt}",
             "format": fmt,
         }
     status = ensure_preview_server()

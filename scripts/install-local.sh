@@ -109,6 +109,10 @@ patterns = (
     ("*.htm", "tencentDocument.present"),
     ("*.md", "tencentDocument.present"),
     ("*.markdown", "tencentDocument.present"),
+    ("*.docx", "tencentDocument.present"),
+    ("*.xlsx", "tencentDocument.present"),
+    ("*.pptx", "tencentDocument.present"),
+    ("*.pdf", "tencentDocument.present"),
 )
 updated = []
 for path in candidates:
@@ -136,4 +140,4 @@ PY
 echo "Installed to $DEST"
 echo "Extension: ${EXT_DEST}"
 echo "Reload Cursor window (Developer: Reload Window)."
-echo "Then open any .md/.html — default is visual present."
+echo "Then open .md/.html (present UI) or .docx/.xlsx/.pptx/.pdf (editor_sdk UI)."

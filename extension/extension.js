@@ -5,18 +5,40 @@ const vscode = require("vscode");
 const http = require("http");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const { spawn } = require("child_process");
 
 const VIEW_TYPE = "tencentDocument.present";
 const DEFAULT_PORT = 39110;
+const DEFAULT_SDK_PORT = 39099;
 
 /** @type {import('child_process').ChildProcess | null} */
 let daemonProc = null;
+
+const OFFICE_EXT = {
+  ".docx": "doc",
+  ".doc": "doc",
+  ".wps": "doc",
+  ".xlsx": "sheet",
+  ".xls": "sheet",
+  ".csv": "sheet",
+  ".pptx": "slide",
+  ".ppt": "slide",
+  ".pdf": "pdf",
+};
 
 function getPort() {
   const cfg = vscode.workspace.getConfiguration("tencentDocument");
   const n = cfg.get("previewPort");
   return typeof n === "number" && n > 0 ? n : DEFAULT_PORT;
+}
+
+function getSdkPort() {
+  const cfg = vscode.workspace.getConfiguration("tencentDocument");
+  const n = cfg.get("sdkPort");
+  if (typeof n === "number" && n > 0) return n;
+  const env = Number(process.env.EDITOR_SDK_PORT || 0);
+  return env > 0 ? env : DEFAULT_SDK_PORT;
 }
 
 function getPluginRoot(context) {
@@ -39,7 +61,47 @@ function getPluginRoot(context) {
 function detectFormat(fsPath) {
   const ext = path.extname(fsPath).toLowerCase();
   if (ext === ".html" || ext === ".htm") return "html";
+  if (OFFICE_EXT[ext] === "doc") return "docx";
+  if (OFFICE_EXT[ext] === "sheet") return "xlsx";
+  if (OFFICE_EXT[ext] === "slide") return "pptx";
+  if (OFFICE_EXT[ext] === "pdf") return "pdf";
   return "md";
+}
+
+function isOfficePath(fsPath) {
+  return Boolean(OFFICE_EXT[path.extname(fsPath).toLowerCase()]);
+}
+
+/** WorkBuddy-compatible editor_sdk visual URL. */
+function buildSdkPreviewUrl(fsPath, sdkPort) {
+  const ext = path.extname(fsPath).toLowerCase();
+  const type = OFFICE_EXT[ext];
+  if (!type) return "";
+  const mode = type === "pdf" ? "readonly" : "edit";
+  const globalPadId = crypto.createHash("md5").update(fsPath).digest("hex");
+  const params = new URLSearchParams({
+    title: path.basename(fsPath),
+    localFilePath: fsPath,
+    globalPadId,
+  });
+  if (type === "doc") {
+    params.set("local_edit", "1");
+    params.set("client", "sdk_local");
+    params.set("mode", mode === "readonly" ? "readonly" : "edit");
+    params.set("toolbar", mode === "readonly" ? "hide" : "show");
+    params.set("outline", "show");
+    params.set("statusbar", mode === "readonly" ? "hide" : "show");
+    params.set("editorSdkUrl", `http://127.0.0.1:${sdkPort}`);
+  } else if (type === "sheet") {
+    params.set("local_edit", "1");
+    params.set("client", "sdk_local_pure");
+    params.set("mode", mode === "readonly" ? "readonly" : "edit");
+  } else if (type === "slide") {
+    params.set("local_edit", "1");
+    params.set("client", mode === "readonly" ? "sdk_local_preview" : "sdk_local_wb");
+    params.set("hideTitlebar", "1");
+  }
+  return `http://127.0.0.1:${sdkPort}/static/${type}/pc.html?${params.toString()}`;
 }
 
 function presentUrl(fsPath, port) {
@@ -96,6 +158,73 @@ async function ensureDaemon(pluginRoot, port) {
   }
   vscode.window.showErrorMessage(`Document Present: 预览服务未就绪（端口 ${port}）。日志: ${logPath}`);
   return false;
+}
+
+/** Start editor_sdk via ensure_sdk.py if /health is down. */
+async function ensureSdk(pluginRoot, sdkPort) {
+  if (await portOpen(sdkPort)) return true;
+  if (!pluginRoot) {
+    vscode.window.showErrorMessage(
+      "Document Present: 未找到插件目录，无法启动 editor_sdk。"
+    );
+    return false;
+  }
+  const ensurePy = path.join(pluginRoot, "mcp-server", "ensure_sdk.py");
+  if (!fs.existsSync(ensurePy)) {
+    vscode.window.showErrorMessage(`Document Present: 缺少 ${ensurePy}`);
+    return false;
+  }
+  await new Promise((resolve) => {
+    const child = spawn("python3", [ensurePy], {
+      env: {
+        ...process.env,
+        EDITOR_SDK_PORT: String(sdkPort),
+        DOCUMENT_EDITOR_PLUGIN_ROOT: pluginRoot,
+      },
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+    child.on("exit", () => resolve());
+    child.on("error", () => resolve());
+    setTimeout(() => resolve(), 12000);
+  });
+  if (await portOpen(sdkPort)) return true;
+  vscode.window.showErrorMessage(
+    "Document Present: editor_sdk 未就绪。请设置 EDITOR_SDK_BIN 或运行 bash scripts/fetch-sdk.sh"
+  );
+  return false;
+}
+
+function buildOfficeEmbedHtml(sdkUrl) {
+  const csp = [
+    "default-src 'none'",
+    "frame-src http://127.0.0.1:* http://localhost:*",
+    "style-src 'unsafe-inline'",
+    "script-src 'unsafe-inline'",
+  ].join("; ");
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta http-equiv="Content-Security-Policy" content="${csp}"/>
+<style>
+  html,body{margin:0;height:100%;background:#f5f6f7}
+  iframe{border:0;width:100%;height:100%;display:block}
+  .bar{position:absolute;top:8px;right:12px;z-index:2;font:12px/1.4 -apple-system,sans-serif}
+  .bar a{color:#1a6cff}
+</style>
+</head>
+<body>
+  <div class="bar"><a href="${sdkUrl}" id="ext">在浏览器打开</a></div>
+  <iframe src="${sdkUrl}" title="Tencent editor_sdk" allow="clipboard-read; clipboard-write"></iframe>
+  <script>
+    const vscode = acquireVsCodeApi();
+    document.getElementById('ext').addEventListener('click', (e) => {
+      e.preventDefault();
+      vscode.postMessage({ type: 'openExternal', url: ${JSON.stringify(sdkUrl)} });
+    });
+  </script>
+</body>
+</html>`;
 }
 
 function escapeJs(s) {
@@ -198,12 +327,38 @@ class PresentEditorProvider {
 
   async resolveCustomEditor(document, webviewPanel) {
     const fsPath = document.uri.fsPath;
-    const port = getPort();
     const pluginRoot = getPluginRoot(this.context);
+    webviewPanel.webview.options = {
+      enableScripts: true,
+      // Allow iframe to editor_sdk on 127.0.0.1
+      localResourceRoots: [],
+    };
+
+    // Office / PDF → embed Tencent editor_sdk visual UI
+    if (isOfficePath(fsPath)) {
+      const sdkPort = getSdkPort();
+      const sdkOk = await ensureSdk(pluginRoot, sdkPort);
+      const sdkUrl = buildSdkPreviewUrl(fsPath, sdkPort);
+      if (sdkOk && sdkUrl) {
+        webviewPanel.webview.html = buildOfficeEmbedHtml(sdkUrl);
+      } else {
+        webviewPanel.webview.html = `<!DOCTYPE html><html><body style="font:13px/1.5 -apple-system,sans-serif;padding:16px">
+          <p>editor_sdk 未就绪，无法打开 Office 可视化编辑。</p>
+          <p>请运行 <code>bash scripts/fetch-sdk.sh</code> 与 <code>bash scripts/install-local.sh</code>，然后 Reload Window。</p>
+        </body></html>`;
+      }
+      webviewPanel.webview.onDidReceiveMessage(async (msg) => {
+        if (!msg || !msg.type) return;
+        if (msg.type === "openExternal" && msg.url) {
+          await vscode.env.openExternal(vscode.Uri.parse(String(msg.url)));
+        }
+      });
+      return;
+    }
+
+    const port = getPort();
     const ok = await ensureDaemon(pluginRoot, port);
     const url = presentUrl(fsPath, port);
-
-    webviewPanel.webview.options = { enableScripts: true };
 
     let html = null;
     if (ok && pluginRoot) {
@@ -292,6 +447,10 @@ async function ensureEditorAssociations() {
     "*.htm": VIEW_TYPE,
     "*.md": VIEW_TYPE,
     "*.markdown": VIEW_TYPE,
+    "*.docx": VIEW_TYPE,
+    "*.xlsx": VIEW_TYPE,
+    "*.pptx": VIEW_TYPE,
+    "*.pdf": VIEW_TYPE,
   };
   let changed = false;
   for (const [k, v] of Object.entries(want)) {

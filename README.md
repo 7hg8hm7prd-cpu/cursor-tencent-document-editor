@@ -6,10 +6,10 @@
 |------|------|------|
 | Markdown (`.md`) | 默认可视化 present | WYSIWYG + MCP `document_edit` |
 | HTML (`.html`) | 默认可视化 present | WYSIWYG + MCP `document_edit` |
-| Word (`.docx`) | editor_sdk | `document_edit` 整篇重写；`document_patch` 就地替换 |
-| PowerPoint (`.pptx`) | editor_sdk | 整篇 / `document_patch` 页内替换 |
-| Excel (`.xlsx`) | editor_sdk | CSV 写入 / `document_patch` |
-| PDF (`.pdf`) | 文本抽取 | 否 |
+| Word (`.docx`) | **editor_sdk UI**（`/static/doc/pc.html`） | UI 内编辑；MCP `document_patch` / `document_edit` |
+| PowerPoint (`.pptx`) | **editor_sdk UI** | UI 内编辑；`document_patch` |
+| Excel (`.xlsx`) | **editor_sdk UI** | UI 内编辑；`document_patch` |
+| PDF (`.pdf`) | **editor_sdk UI**（只读） | 否 |
 
 MD/HTML 对齐 WorkBuddy `present_files`：
 
@@ -78,6 +78,7 @@ python3 -m unittest discover -s tests -v
 - [docs/2026-10-07-document-present-toolbar-parity.md](docs/2026-10-07-document-present-toolbar-parity.md)
 - [docs/2026-10-07-present-ai-hermes-bridge.md](docs/2026-10-07-present-ai-hermes-bridge.md)
 - [docs/2026-10-07-office-inplace-patch.md](docs/2026-10-07-office-inplace-patch.md)
+- [docs/2026-10-07-office-sdk-visual-present.md](docs/2026-10-07-office-sdk-visual-present.md)
 
 ## License
 
